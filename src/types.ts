@@ -1,5 +1,6 @@
 export type Severity = "low" | "medium" | "high";
 export type Complexity = "low" | "medium" | "high";
+export type Runtime = "cloud" | "local";
 
 export interface Finding {
   id: string;

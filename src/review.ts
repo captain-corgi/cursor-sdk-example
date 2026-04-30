@@ -1,7 +1,7 @@
 import { Agent, CursorAgentError } from "@cursor/sdk";
 
 import { parseReviewJson } from "./parse.js";
-import type { RepoContext, ReviewResult } from "./types.js";
+import type { RepoContext, ReviewResult, Runtime } from "./types.js";
 
 const MODEL_ID = "composer-2" as const;
 
@@ -9,6 +9,8 @@ interface ReviewParams {
   cursorApiKey: string;
   githubToken: string;
   ctx: RepoContext;
+  runtime: Runtime;
+  localCwd?: string;
 }
 
 export interface ReviewRun {
@@ -22,25 +24,40 @@ export async function runReview({
   cursorApiKey,
   githubToken,
   ctx,
+  runtime,
+  localCwd,
 }: ReviewParams): Promise<ReviewRun> {
-  await using agent = await Agent.create({
-    apiKey: cursorApiKey,
-    model: { id: MODEL_ID },
-    cloud: {
-      repos: [{ url: ctx.repoUrl, startingRef: ctx.headRef }],
-      workOnCurrentBranch: true,
-      skipReviewerRequest: true,
-      autoCreatePR: false,
+  const mcpServers = {
+    github: {
+      type: "stdio" as const,
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-github"],
+      env: { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken },
     },
-    mcpServers: {
-      github: {
-        type: "stdio",
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-github"],
-        env: { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken },
-      },
-    },
-  });
+  };
+
+  const agentOptions =
+    runtime === "cloud"
+      ? {
+          apiKey: cursorApiKey,
+          model: { id: MODEL_ID },
+          cloud: {
+            repos: [{ url: ctx.repoUrl, startingRef: ctx.headRef }],
+            workOnCurrentBranch: true,
+            skipReviewerRequest: true,
+            autoCreatePR: false,
+          },
+          mcpServers,
+        }
+      : {
+          apiKey: cursorApiKey,
+          model: { id: MODEL_ID },
+          local: { cwd: localCwd ?? process.cwd(), settingSources: [] },
+          mcpServers,
+        };
+
+  await using agent = await Agent.create(agentOptions);
+  console.log(`[review] runtime=${runtime} agent=${agent.agentId}`);
 
   const prompt = buildReviewPrompt(ctx);
 

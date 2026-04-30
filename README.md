@@ -1,5 +1,7 @@
 # Cursor SDK PR Review Action
 
+> Looking for the operator's guide? See [`docs/USAGE.md`](docs/USAGE.md) for installation, configuration, troubleshooting, and FAQ.
+
 GitHub Action that uses the [Cursor TypeScript SDK](https://cursor.com/docs/api/sdk/typescript) to:
 
 1. Run a cloud Cursor agent that reviews the PR diff and posts inline review comments.
@@ -32,7 +34,7 @@ Orchestrator (src/index.ts)
         +--> GitHub API: auto-approve OR request CODEOWNERS review
 ```
 
-Both agent calls use the **cloud runtime** so they have GitHub MCP access without needing the action runner to handle a full repo checkout.
+Both agent calls support `local` (default) or `cloud` runtime via the `CURSOR_RUNTIME` env var — see [Choosing a runtime](docs/USAGE.md#choosing-a-runtime). Local runs on the Actions runner against the checked-out workspace; cloud runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Both use the GitHub MCP for posting comments and opening the fix PR.
 
 ## Required configuration
 
@@ -43,7 +45,7 @@ Both agent calls use the **cloud runtime** so they have GitHub MCP access withou
 | `CURSOR_API_KEY`  | repo secret     | yes      | Cursor team service-account key (preferred) or user key.              |
 | `LINEAR_API_KEY`  | repo secret     | optional | Linear personal API key. If unset, Linear issue creation is skipped. |
 
-`GITHUB_TOKEN` is provided automatically by Actions; the workflow grants it `pull-requests: write`, `issues: write`, and `contents: read`.
+`GITHUB_TOKEN` is provided automatically by Actions; the workflow grants it `pull-requests: write`, `issues: write`, and `contents: write` (so the `local` runtime can push the autofix branch).
 
 ### Variables
 

@@ -39,6 +39,86 @@ export async function commentOnPR(
   });
 }
 
+export interface AutofixPrInfo {
+  url: string;
+  number: number;
+  reused: boolean;
+}
+
+/**
+ * Open an autofix PR for `branch` targeting `ctx.headRef`. The autofix agent's
+ * contract is to push the branch; the orchestrator owns PR creation so that a
+ * successful push always surfaces as a PR (the agent occasionally skipped the
+ * MCP create_pull_request call).
+ *
+ * Verifies the branch is ahead of the head ref, reuses an existing open PR for
+ * the same head/base if one exists, otherwise creates a new PR.
+ */
+export async function openAutofixPr(
+  octokit: Octokit,
+  ctx: RepoContext,
+  branch: string,
+  title: string,
+  body: string,
+): Promise<AutofixPrInfo> {
+  let aheadBy: number;
+  try {
+    const compare = await octokit.repos.compareCommitsWithBasehead({
+      owner: ctx.owner,
+      repo: ctx.repo,
+      basehead: `${ctx.headRef}...${branch}`,
+    });
+    aheadBy = compare.data.ahead_by;
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (status === 404) {
+      throw new Error(
+        `autofix branch "${branch}" not found on remote (compare 404). ` +
+          `The agent likely failed to push.`,
+      );
+    }
+    throw new Error(
+      `compare ${ctx.headRef}...${branch} failed: ${msg}`,
+    );
+  }
+
+  if (aheadBy === 0) {
+    throw new Error(
+      `autofix branch "${branch}" has no commits ahead of "${ctx.headRef}"`,
+    );
+  }
+
+  // Reuse an existing open PR for the same head -> base if one already exists.
+  const existing = await octokit.pulls.list({
+    owner: ctx.owner,
+    repo: ctx.repo,
+    head: `${ctx.owner}:${branch}`,
+    base: ctx.headRef,
+    state: "open",
+  });
+
+  if (existing.data.length > 0) {
+    const pr = existing.data[0]!;
+    return { url: pr.html_url, number: pr.number, reused: true };
+  }
+
+  const created = await octokit.pulls.create({
+    owner: ctx.owner,
+    repo: ctx.repo,
+    head: branch,
+    base: ctx.headRef,
+    title,
+    body,
+  });
+
+  return {
+    url: created.data.html_url,
+    number: created.data.number,
+    reused: false,
+  };
+}
+
 export interface CodeownersAssignment {
   users: string[];
   teams: string[];

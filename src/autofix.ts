@@ -3,8 +3,10 @@ import { Agent, CursorAgentError } from "@cursor/sdk";
 import type { AutofixOutcome, Finding, RepoContext, Runtime } from "./types.js";
 
 const MODEL_ID = "composer-2" as const;
-const FIX_PR_URL_START = "<<<CURSOR_FIX_PR_URL>>>";
-const FIX_PR_URL_END = "<<<END_CURSOR_FIX_PR_URL>>>";
+const FIX_STATUS_START = "<<<CURSOR_AUTOFIX_STATUS>>>";
+const FIX_STATUS_END = "<<<END_CURSOR_AUTOFIX_STATUS>>>";
+
+type FixStatus = "ok" | "none";
 
 interface AutofixParams {
   cursorApiKey: string;
@@ -98,16 +100,24 @@ export async function runAutofix({
       rawOutput = result.result;
     }
 
-    const fixPrUrl = extractFixPrUrl(rawOutput);
-    if (!fixPrUrl) {
+    const status = extractFixStatus(rawOutput);
+    if (status === "none") {
       return {
         attempted: true,
         branch,
-        error: "autofix agent did not report a fix PR URL",
+        error: "autofix agent reported no fixes applied (NONE)",
+      };
+    }
+    if (status !== "ok") {
+      return {
+        attempted: true,
+        branch,
+        error: "autofix agent did not emit a completion status",
       };
     }
 
-    return { attempted: true, branch, fixPrUrl };
+    // Branch is pushed; the orchestrator opens the PR.
+    return { attempted: true, branch };
   } catch (err) {
     if (err instanceof CursorAgentError) {
       console.error(
@@ -141,44 +151,54 @@ function buildAutofixPrompt(
   return `You are autofixing review findings on PR ${ctx.prUrl} (${ctx.owner}/${ctx.repo}).
 The current head branch is "${ctx.headRef}". You must NOT push to that branch directly.
 
-Goals:
-1. Create a new branch named exactly "${branch}" off "${ctx.headRef}".
-2. Apply ONLY the fixes listed below. Do not refactor unrelated code, do not change behavior,
+Goals (do them in order):
+
+1. Configure git identity locally for this run:
+     git config user.name "Cursor Autofix"
+     git config user.email "cursor-autofix@users.noreply.github.com"
+2. Create a new branch named exactly "${branch}" off "${ctx.headRef}".
+3. Apply ONLY the fixes listed below. Do not refactor unrelated code, do not change behavior,
    do not address findings that are not in this list.
-3. Make one focused commit per finding when reasonable; commit messages should reference the
+4. Make one focused commit per finding when reasonable; commit messages should reference the
    finding id (e.g. "fix(F1): remove unused import").
-4. Push the branch to the origin remote.
-5. Open a pull request via the github MCP tool \`create_pull_request\` with:
-   - base: "${ctx.headRef}"
-   - head: "${branch}"
-   - title: "autofix: review findings for #${ctx.prNumber}"
-   - body: a short summary listing each finding id you addressed and the file changed.
-6. After the PR is created, emit the PR URL in this exact format at the very end of your
-   final message (no extra text after the closing sentinel):
+5. Push the branch to the "origin" remote (e.g. \`git push -u origin ${branch}\`).
+6. Do NOT open a pull request and do NOT attempt to call the github MCP \`create_pull_request\`
+   tool. The orchestrator will open the PR itself after this run finishes by inspecting the
+   pushed branch.
 
-${FIX_PR_URL_START}
-https://github.com/${ctx.owner}/${ctx.repo}/pull/<number>
-${FIX_PR_URL_END}
+After the push succeeds, emit ONE status block at the very end of your final message,
+exactly in this format (no extra commentary after the closing sentinel):
 
-If you cannot safely fix a specific finding, skip it and note the skip in the PR body. Never
-fabricate fixes. If no fixes can be applied at all, do NOT open a PR; instead end your message
-with the sentinels containing the literal string "NONE" between them.
+${FIX_STATUS_START}
+OK
+${FIX_STATUS_END}
+
+Edge cases:
+- If you can apply some fixes but not others, push the partial set, note the skipped finding
+  ids in the LAST commit message body, and still emit "OK".
+- If you cannot safely apply ANY of the fixes, do NOT push the branch. Instead emit:
+
+${FIX_STATUS_START}
+NONE
+${FIX_STATUS_END}
+
+Never fabricate fixes.
 
 Findings to address:
 
 ${findingsBlock}`;
 }
 
-function extractFixPrUrl(raw: string): string | undefined {
-  const start = raw.lastIndexOf(FIX_PR_URL_START);
+function extractFixStatus(raw: string): FixStatus | undefined {
+  const start = raw.lastIndexOf(FIX_STATUS_START);
   if (start === -1) return undefined;
-  const after = start + FIX_PR_URL_START.length;
-  const end = raw.indexOf(FIX_PR_URL_END, after);
+  const after = start + FIX_STATUS_START.length;
+  const end = raw.indexOf(FIX_STATUS_END, after);
   if (end === -1) return undefined;
-  const body = raw.slice(after, end).trim();
-  if (!body || body === "NONE") return undefined;
-  if (!/^https:\/\/github\.com\/.+\/pull\/\d+$/.test(body)) return undefined;
-  return body;
+  const body = raw.slice(after, end).trim().toUpperCase();
+  if (body === "OK") return "ok";
+  if (body === "NONE") return "none";
+  return undefined;
 }
 
 function shortId(id: string): string {

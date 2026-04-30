@@ -5,12 +5,13 @@ import {
   autoApprove,
   commentOnPR,
   makeOctokit,
+  openAutofixPr,
   requestCodeownersReview,
 } from "./github.js";
 import { createLinearIssueForReview } from "./linear.js";
 import { ReviewParseError } from "./parse.js";
 import { runReview, ReviewRunError } from "./review.js";
-import type { AutofixOutcome, RepoContext, Runtime } from "./types.js";
+import type { AutofixOutcome, Finding, RepoContext, Runtime } from "./types.js";
 
 const EX_OK = 0;
 const EX_STARTUP_FAILURE = 1;
@@ -56,6 +57,30 @@ async function main(): Promise<number> {
       reviewRunId: review.runId,
       runtime: env.runtime,
     });
+
+    // The agent's contract is to push the branch; the orchestrator opens the
+    // PR. This avoids a class of failure where the agent successfully pushed
+    // commits but skipped the MCP create_pull_request call, leaving the fix
+    // invisible to the user.
+    if (autofix.attempted && autofix.branch && !autofix.error) {
+      try {
+        const prInfo = await openAutofixPr(
+          octokit,
+          env.ctx,
+          autofix.branch,
+          `autofix: review findings for #${env.ctx.prNumber}`,
+          buildAutofixPrBody(env.ctx, autofixable),
+        );
+        autofix.fixPrUrl = prInfo.url;
+        console.log(
+          `[orchestrator] autofix PR ${prInfo.reused ? "reused" : "opened"}: ${prInfo.url}`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[orchestrator] autofix PR creation failed: ${msg}`);
+        autofix.error = `pr creation failed: ${msg}`;
+      }
+    }
   }
 
   let linearUrl: string | undefined;
@@ -176,6 +201,28 @@ function buildApprovalBody(summary: string, autofix: AutofixOutcome): string {
   if (autofix.attempted && autofix.fixPrUrl) {
     lines.push("", `Autofix PR: ${autofix.fixPrUrl}`);
   }
+  return lines.join("\n");
+}
+
+function buildAutofixPrBody(ctx: RepoContext, autofixable: Finding[]): string {
+  const lines = [
+    `Automated autofix for findings on ${ctx.prUrl}.`,
+    "",
+    `Targets the original PR's head branch (\`${ctx.headRef}\`). Merge this PR to land the fixes; close it (and delete the branch) if you want to ignore the autofix and address the findings manually.`,
+    "",
+    `## Findings addressed`,
+    "",
+  ];
+  for (const f of autofixable) {
+    const lineSuffix = f.line !== undefined ? `:${f.line}` : "";
+    lines.push(
+      `- **[${f.id}] ${f.title}** (severity: ${f.severity}) — \`${f.file}${lineSuffix}\``,
+    );
+  }
+  lines.push(
+    "",
+    `Note: the autofix agent may have skipped findings it could not safely apply. Check the commit messages for any \`skipped\` notes.`,
+  );
   return lines.join("\n");
 }
 

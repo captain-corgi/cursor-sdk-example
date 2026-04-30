@@ -4,9 +4,11 @@ import { runAutofix } from "./autofix.js";
 import {
   autoApprove,
   commentOnPR,
+  listOpenBotReviewThreadIds,
   makeOctokit,
   openAutofixPr,
   requestCodeownersReview,
+  resolveReviewThreads,
 } from "./github.js";
 import { createLinearIssueForReview } from "./linear.js";
 import { ReviewParseError } from "./parse.js";
@@ -33,12 +35,38 @@ async function main(): Promise<number> {
   console.log(`[orchestrator] runtime=${env.runtime}`);
   const octokit = makeOctokit(env.githubToken);
 
+  let priorThreadIds: string[] = [];
+  try {
+    priorThreadIds = await listOpenBotReviewThreadIds(octokit, env.ctx);
+    console.log(
+      `[orchestrator] prior bot review threads: ${priorThreadIds.length}`,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[orchestrator] list prior review threads failed: ${msg}`);
+  }
+
   const review = await runReview({
     cursorApiKey: env.cursorApiKey,
     githubToken: env.githubToken,
     ctx: env.ctx,
     runtime: env.runtime,
   });
+
+  if (priorThreadIds.length > 0) {
+    try {
+      const { resolved, failed } = await resolveReviewThreads(
+        octokit,
+        priorThreadIds,
+      );
+      console.log(
+        `[orchestrator] resolved prior threads: ${resolved} (failed: ${failed})`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[orchestrator] resolve prior threads failed: ${msg}`);
+    }
+  }
 
   console.log(
     `[orchestrator] complexity=${review.result.complexity} findings=${review.result.findings.length}`,

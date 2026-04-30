@@ -105,6 +105,8 @@ ambiguous error message (filed as Linear issue).
 
 Posted as a normal GitHub review (`event: COMMENT`). Each addresses a single concrete finding. The agent is instructed to skip praise-only and bikeshed comments.
 
+On every re-run (for example after a new commit), inline review threads from **prior runs by this bot** are auto-resolved so only the latest round stays expanded in the PR UI. Use **Show resolved** on the PR to see older rounds. Human-authored threads and the PR-level summary comment are not changed.
+
 ### A fix PR (if autofixable findings exist)
 
 Branch name: `cursor/autofix/pr-<original-pr-number>-<short-id>`. PR title: `autofix: review findings for #<original-pr-number>`. PR base: the original feature branch (NOT the default branch). Merging the fix PR pushes commits onto the original PR's head, where they'll be re-reviewed on the next push.

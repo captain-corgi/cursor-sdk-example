@@ -39,6 +39,138 @@ export async function commentOnPR(
   });
 }
 
+/** IDs of unresolved review threads whose first comment was authored by the token user (bot). */
+export async function listOpenBotReviewThreadIds(
+  octokit: Octokit,
+  ctx: RepoContext,
+): Promise<string[]> {
+  const THREADS_QUERY = `
+    query ReviewThreads($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+      viewer {
+        login
+      }
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $number) {
+          reviewThreads(first: 100, after: $cursor) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              id
+              isResolved
+              comments(first: 1) {
+                nodes {
+                  author {
+                    login
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  interface ThreadNode {
+    id: string;
+    isResolved: boolean;
+    comments: { nodes: Array<{ author: { login: string } | null }> };
+  }
+
+  interface ThreadsData {
+    viewer: { login: string } | null;
+    repository: {
+      pullRequest: {
+        reviewThreads: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: ThreadNode[];
+        };
+      } | null;
+    } | null;
+  }
+
+  const threadIds: string[] = [];
+  let after: string | null = null;
+  let viewerLogin: string | null = null;
+
+  for (;;) {
+    const raw: unknown = await octokit.graphql(THREADS_QUERY, {
+      owner: ctx.owner,
+      repo: ctx.repo,
+      number: ctx.prNumber,
+      cursor: after,
+    });
+    const data = raw as ThreadsData;
+
+    if (viewerLogin === null && data.viewer?.login) {
+      viewerLogin = data.viewer.login;
+    }
+
+    const pr = data.repository?.pullRequest;
+    if (!pr) break;
+
+    const { pageInfo, nodes } = pr.reviewThreads;
+    const login = viewerLogin ?? data.viewer?.login;
+    if (!login) {
+      console.warn("[github] listOpenBotReviewThreadIds: no viewer login; skipping");
+      break;
+    }
+
+    for (const node of nodes) {
+      if (node.isResolved) continue;
+      const firstAuthor = node.comments.nodes[0]?.author?.login;
+      if (firstAuthor === login) {
+        threadIds.push(node.id);
+      }
+    }
+
+    if (!pageInfo.hasNextPage || !pageInfo.endCursor) break;
+    after = pageInfo.endCursor;
+  }
+
+  return threadIds;
+}
+
+export interface ResolveReviewThreadsResult {
+  resolved: number;
+  failed: number;
+}
+
+/** Best-effort: resolve each thread; logs and counts failures without throwing. */
+export async function resolveReviewThreads(
+  octokit: Octokit,
+  threadIds: string[],
+): Promise<ResolveReviewThreadsResult> {
+  const RESOLVE_MUTATION = `
+    mutation ResolveReviewThread($threadId: ID!) {
+      resolveReviewThread(input: { threadId: $threadId }) {
+        thread {
+          id
+          isResolved
+        }
+      }
+    }
+  `;
+
+  let resolved = 0;
+  let failed = 0;
+
+  for (const threadId of threadIds) {
+    try {
+      await octokit.graphql(RESOLVE_MUTATION, { threadId });
+      resolved++;
+    } catch (err) {
+      failed++;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[github] resolve thread ${threadId} failed: ${msg}`);
+    }
+  }
+
+  return { resolved, failed };
+}
+
 export interface AutofixPrInfo {
   url: string;
   number: number;

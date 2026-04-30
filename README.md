@@ -1,0 +1,92 @@
+# Cursor SDK PR Review Action
+
+GitHub Action that uses the [Cursor TypeScript SDK](https://cursor.com/docs/api/sdk/typescript) to:
+
+1. Run a cloud Cursor agent that reviews the PR diff and posts inline review comments.
+2. Classify the change complexity (`low` / `medium` / `high`) and tag each finding as autofixable or not.
+3. If anything is autofixable, run a second cloud agent that opens a fix-PR back to the feature branch.
+4. If any non-autofixable findings remain, file a single Linear issue aggregating them.
+5. If the agent classified the change as `low` complexity and there are no blocking findings, auto-approve the PR. Otherwise, request review from CODEOWNERS.
+
+## Architecture
+
+```
+PR opened/synchronized
+        |
+        v
+GitHub Action (this repo)
+        |
+        v
+Orchestrator (src/index.ts)
+        |
+        +--> Cursor cloud agent: review (GitHub MCP)
+        |       posts inline review comments
+        |       emits structured JSON tail block
+        |
+        +--> Cursor cloud agent: autofix (GitHub MCP) [if autofixable findings]
+        |       branches off HEAD_REF
+        |       opens fix PR targeting HEAD_REF
+        |
+        +--> Linear GraphQL: issueCreate [if blocking findings]
+        |
+        +--> GitHub API: auto-approve OR request CODEOWNERS review
+```
+
+Both agent calls use the **cloud runtime** so they have GitHub MCP access without needing the action runner to handle a full repo checkout.
+
+## Required configuration
+
+### Secrets
+
+| Name              | Where           | Required | Notes                                                                 |
+| ----------------- | --------------- | -------- | --------------------------------------------------------------------- |
+| `CURSOR_API_KEY`  | repo secret     | yes      | Cursor team service-account key (preferred) or user key.              |
+| `LINEAR_API_KEY`  | repo secret     | optional | Linear personal API key. If unset, Linear issue creation is skipped. |
+
+`GITHUB_TOKEN` is provided automatically by Actions; the workflow grants it `pull-requests: write`, `issues: write`, and `contents: read`.
+
+### Variables
+
+| Name             | Where           | Required | Notes                                                                                                       |
+| ---------------- | --------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `LINEAR_TEAM_ID` | repo variable   | optional | UUID of the Linear team that should own filed issues. Required if you want Linear integration to function. |
+
+## How it decides
+
+- **Auto-approve** runs only when **all** of:
+  - the agent classified complexity as `low`,
+  - there are zero non-autofixable findings, and
+  - if autofix was attempted, a fix-PR URL was reported.
+- Otherwise, the action calls `pulls.requestReviewers` against owners resolved from `.github/CODEOWNERS` (or `CODEOWNERS` / `docs/CODEOWNERS`) for the changed files. GitHub will already auto-request CODEOWNERS via branch protection if configured; this is a redundant safety net.
+
+## Behavior notes
+
+- The review prompt requires the agent to emit a `<<<CURSOR_REVIEW_JSON>>> ... <<<END_CURSOR_REVIEW_JSON>>>` block. If that block is missing or invalid, the orchestrator exits with code `3` and never auto-approves.
+- The autofix agent uses the GitHub MCP to open a PR explicitly targeting the head branch. We do **not** use `cloud.autoCreatePR` because that opens PRs against the default branch, which is not what we want here.
+- Linear failures are non-blocking: they log and let the approval flow continue.
+- The action posts a single summary comment on the PR with complexity, finding counts, fix-PR URL (if any), and Linear issue URL (if any).
+
+## Exit codes
+
+| Code | Meaning                                                                                                |
+| ---- | ------------------------------------------------------------------------------------------------------ |
+| 0    | Success.                                                                                               |
+| 1    | Permanent startup failure (env error, non-retryable `CursorAgentError`, unexpected error).             |
+| 2    | Review run executed but ended with `result.status === "error"` (or non-`finished`).                    |
+| 3    | Review JSON tail block was missing or invalid; classification unknown, do not auto-approve.            |
+| 75   | Transient `CursorAgentError` (`isRetryable=true`). Re-run the workflow.                                |
+
+## Local development
+
+```bash
+npm install
+npm run typecheck
+```
+
+Set the env vars from the workflow file and run `npm start` to invoke the orchestrator against an existing PR.
+
+## Limitations
+
+- Cloud agent runtime requires the Cursor account to have repo access (GitHub App installation). Without it, the cloud run cannot clone the repo.
+- The CODEOWNERS parser implements a simplified subset of the matching rules (rooted paths, `*`, `**`, trailing `/` for directories, `?` for single character). Complex patterns may not match exactly the way GitHub does; treat the explicit `requestReviewers` call as a hint, not the source of truth — branch protection should still enforce real CODEOWNERS rules.
+- The autofix agent is intentionally conservative: it skips findings it cannot mechanically resolve. Skipped findings remain in the original PR.

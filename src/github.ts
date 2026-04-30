@@ -8,6 +8,14 @@ const CODEOWNERS_PATHS = [
   "docs/CODEOWNERS",
 ] as const;
 
+/**
+ * Hidden marker embedded in every PR-level summary comment we post. We use it
+ * to find prior runs' summary comments so we can minimize them as outdated on
+ * the next round, instead of leaving a growing stack of "Cursor automated
+ * review" comments at the top of the PR.
+ */
+export const SUMMARY_COMMENT_MARKER = "<!-- cursor-pr-review:summary -->";
+
 export function makeOctokit(token: string): Octokit {
   return new Octokit({ auth: token });
 }
@@ -169,6 +177,147 @@ export async function resolveReviewThreads(
   }
 
   return { resolved, failed };
+}
+
+/**
+ * Node IDs of un-minimized PR-level issue comments authored by the token user
+ * whose body contains `marker`. These are the summary comments from prior
+ * runs of this action; the orchestrator minimizes them as `OUTDATED` so the
+ * PR thread doesn't accumulate stale "Cursor automated review" comments.
+ */
+export async function listPriorSummaryCommentIds(
+  octokit: Octokit,
+  ctx: RepoContext,
+  marker: string,
+): Promise<string[]> {
+  const COMMENTS_QUERY = `
+    query SummaryComments($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+      viewer {
+        login
+      }
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $number) {
+          comments(first: 100, after: $cursor) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              id
+              body
+              isMinimized
+              author {
+                login
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  interface CommentNode {
+    id: string;
+    body: string | null;
+    isMinimized: boolean;
+    author: { login: string } | null;
+  }
+
+  interface CommentsData {
+    viewer: { login: string } | null;
+    repository: {
+      pullRequest: {
+        comments: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: CommentNode[];
+        };
+      } | null;
+    } | null;
+  }
+
+  const ids: string[] = [];
+  let after: string | null = null;
+  let viewerLogin: string | null = null;
+
+  for (;;) {
+    const raw: unknown = await octokit.graphql(COMMENTS_QUERY, {
+      owner: ctx.owner,
+      repo: ctx.repo,
+      number: ctx.prNumber,
+      cursor: after,
+    });
+    const data = raw as CommentsData;
+
+    if (viewerLogin === null && data.viewer?.login) {
+      viewerLogin = data.viewer.login;
+    }
+
+    const pr = data.repository?.pullRequest;
+    if (!pr) break;
+
+    const login = viewerLogin ?? data.viewer?.login;
+    if (!login) {
+      console.warn("[github] listPriorSummaryCommentIds: no viewer login; skipping");
+      break;
+    }
+
+    for (const c of pr.comments.nodes) {
+      if (c.isMinimized) continue;
+      if (c.author?.login !== login) continue;
+      if (!c.body || !c.body.includes(marker)) continue;
+      ids.push(c.id);
+    }
+
+    if (!pr.comments.pageInfo.hasNextPage || !pr.comments.pageInfo.endCursor) {
+      break;
+    }
+    after = pr.comments.pageInfo.endCursor;
+  }
+
+  return ids;
+}
+
+export interface MinimizeCommentsResult {
+  minimized: number;
+  failed: number;
+}
+
+/**
+ * Best-effort: mark each comment node ID as minimized with the given
+ * classifier (default `OUTDATED`). Failures are logged and counted, never
+ * thrown — a permission glitch on a single comment shouldn't take the whole
+ * orchestrator down.
+ */
+export async function minimizeComments(
+  octokit: Octokit,
+  commentIds: string[],
+  classifier: "OUTDATED" | "RESOLVED" = "OUTDATED",
+): Promise<MinimizeCommentsResult> {
+  const MINIMIZE_MUTATION = `
+    mutation MinimizeComment($id: ID!, $classifier: ReportedContentClassifiers!) {
+      minimizeComment(input: { subjectId: $id, classifier: $classifier }) {
+        minimizedComment {
+          isMinimized
+        }
+      }
+    }
+  `;
+
+  let minimized = 0;
+  let failed = 0;
+
+  for (const id of commentIds) {
+    try {
+      await octokit.graphql(MINIMIZE_MUTATION, { id, classifier });
+      minimized++;
+    } catch (err) {
+      failed++;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[github] minimize comment ${id} failed: ${msg}`);
+    }
+  }
+
+  return { minimized, failed };
 }
 
 export interface AutofixPrInfo {

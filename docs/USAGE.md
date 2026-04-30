@@ -30,6 +30,8 @@ Before you install:
 
 Copy `.github/workflows/cursor-pr-review.yml` from this repo into the target repo at the same path, and copy the `src/`, `package.json`, `package-lock.json`, and `tsconfig.json` files alongside it.
 
+A ready-to-copy workflow with inline setup comments lives at [`examples/cursor-pr-review.yml`](../examples/cursor-pr-review.yml).
+
 If you don't want the orchestrator code living in every repo, alternative deployment patterns are listed under [Operational guidance](#operational-guidance).
 
 ### 2. Add secrets

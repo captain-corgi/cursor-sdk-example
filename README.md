@@ -38,6 +38,8 @@ Both agent calls support `local` (default) or `cloud` runtime via the `CURSOR_RU
 
 ## Required configuration
 
+For a copy-paste workflow you can drop into another repo, see [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml) and [`examples/README.md`](examples/README.md).
+
 ### Secrets
 
 | Name              | Where           | Required | Notes                                                                 |

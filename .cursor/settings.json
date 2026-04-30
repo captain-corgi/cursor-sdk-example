@@ -1,0 +1,19 @@
+{
+  "plugins": {
+    "cursor-sdk": {
+      "enabled": true
+    },
+    "linear": {
+      "enabled": true
+    },
+    "superpowers": {
+      "enabled": true
+    },
+    "context7-plugin": {
+      "enabled": true
+    },
+    "notion-workspace": {
+      "enabled": true
+    }
+  }
+}

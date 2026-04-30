@@ -19,7 +19,7 @@ flowchart TD
 
     Orchestrator --> Review["1. Cursor agent: <b>review</b><br/>(GitHub MCP)<br/>posts inline comments<br/>emits JSON tail block"]
     Review -->|then| Autofix["2. Cursor agent: <b>autofix</b><br/>(GitHub MCP)<br/><i>only if autofixable findings</i><br/>push branch + open fix PR → HEAD_REF"]
-    Autofix -->|then| Linear["3. Linear GraphQL<br/><code>issueCreate</code><br/><i>only if blocking findings</i>"]
+    Autofix -->|then| Linear["3. Linear GraphQL<br/><code>issueCreate</code><br/><i>only if blocking findings + Linear configured</i>"]
     Linear -->|then| Summary["4. Post PR summary<br/>comment"]
     Summary -->|then| Decide{"5. Safe to<br/>auto-approve?"}
 

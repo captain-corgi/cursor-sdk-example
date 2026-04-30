@@ -9,6 +9,16 @@
 #   3. Add a repo variable LINEAR_TEAM_ID (optional) if you use LINEAR_API_KEY.
 #   4. Optional: change CURSOR_RUNTIME below from "local" to "cloud" if the
 #      Cursor GitHub App is installed on your repo — see docs/USAGE.md.
+#
+# Heads up — PRs from public forks:
+#   GitHub does NOT pass repository secrets (including CURSOR_API_KEY) to
+#   `pull_request` workflow runs triggered by a public fork, so fork PRs will
+#   fail at the orchestrator step with a missing-secret error and contributors
+#   from forks will not get a Cursor review. This workflow only reliably runs
+#   for PRs whose head branch lives in the same repo. See examples/README.md
+#   and docs/USAGE.md (FAQ) for fork-coverage options and their security
+#   trade-offs (this workflow checks out and runs PR head code, so naively
+#   switching to `pull_request_target` is unsafe).
 
 name: Cursor PR Review
 

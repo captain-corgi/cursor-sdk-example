@@ -34,6 +34,8 @@ A ready-to-copy workflow with inline setup comments lives at [`examples/cursor-p
 
 If you don't want the orchestrator code living in every repo, alternative deployment patterns are listed under [Operational guidance](#operational-guidance).
 
+> **Heads up — PRs from public forks won't get a review by default.** The bundled trigger is `on: pull_request`, and GitHub does not pass repository secrets to runs from public forks, so the orchestrator step fails fast with a missing-secret error on those PRs. This is a deliberate trade-off — see the [fork FAQ](#faq) for why and what alternatives (`pull_request_target`, `workflow_run`) require if you need fork coverage.
+
 ### 2. Add secrets
 
 In your repo: **Settings -> Secrets and variables -> Actions -> New repository secret**.
@@ -260,7 +262,14 @@ When a run fails, the **Actions log** shows the structured logs from the orchest
 Yes — but the Cursor GitHub App must be installed on the org/repo, and the API key must belong to a user who has access to that repo (or to a team service account with access).
 
 **Does this work on forks?**
-The default workflow trigger `pull_request` does NOT receive secrets when run from a fork, so the action will fail with a missing-secret error. For forked PRs, switch to `pull_request_target` and add manual safety gates — but doing this requires care, because `pull_request_target` runs the workflow against the base ref, not the fork's head, and you must explicitly check out the fork. This is out of scope for the default install.
+**No, not by default.** The bundled workflow uses `on: pull_request`, and GitHub does **not** pass repository secrets (including `CURSOR_API_KEY` and `LINEAR_API_KEY`) to `pull_request` runs triggered from a **public fork** — see [GitHub's docs on secrets and forks](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions#using-secrets-in-a-workflow). On a fork PR the run fails fast at the orchestrator step with `missing required env: CURSOR_API_KEY`, and the fork contributor never gets a Cursor review. The default install only reliably reviews PRs whose head branch lives in **the same repo** (a developer pushing a topic branch, Dependabot, etc.). Private repos can opt into "Send write tokens / secrets to workflows from fork pull requests" under **Settings → Actions → General**, but those toggles are not available for public repos.
+
+For fork coverage you'd switch the trigger to one of:
+
+- **`pull_request_target`** — runs in the context of the **base** ref (so secrets are exposed), but you must explicitly check out the fork's head ref to actually review the proposed code.
+- **`workflow_run`** — splits into a low-privilege run that produces an artifact and a privileged run that consumes it.
+
+**Both require a deliberate security design.** This workflow checks out the PR head and runs `npm ci` (which executes arbitrary lifecycle scripts from the fork's `package.json`/`package-lock.json`) before invoking the orchestrator, with `CURSOR_API_KEY`, `LINEAR_API_KEY`, and a write-scoped `GITHUB_TOKEN` already in the job's environment. Naive `pull_request_target` adoption — checking out `pull_request.head.sha` and running it as-is — is a credential-exfiltration vector: a malicious fork can steal those secrets and push to your default branch. If you do go down this path you should at minimum: (a) require a "ok-to-test"/"safe-to-review" label gated on a maintainer, (b) pin the install step to lockfile-only execution and skip lifecycle scripts (`npm ci --ignore-scripts`), (c) split secrets between the two `workflow_run` jobs so the fork's code never has the raw `CURSOR_API_KEY`, and (d) limit `permissions:` to the minimum each job needs. Fork support is intentionally **out of scope** for the default install in this repo.
 
 **Why not use the Cursor SDK's `autoCreatePR: true` for the fix PR?**
 That option opens PRs against the **default branch** of the repo. We need the fix PR to target the original PR's feature branch. The autofix agent uses the GitHub MCP to create the PR explicitly with the right base.

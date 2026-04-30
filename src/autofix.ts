@@ -1,6 +1,6 @@
 import { Agent, CursorAgentError } from "@cursor/sdk";
 
-import type { AutofixOutcome, Finding, RepoContext } from "./types.js";
+import type { AutofixOutcome, Finding, RepoContext, Runtime } from "./types.js";
 
 const MODEL_ID = "composer-2" as const;
 const FIX_PR_URL_START = "<<<CURSOR_FIX_PR_URL>>>";
@@ -12,6 +12,8 @@ interface AutofixParams {
   ctx: RepoContext;
   findings: Finding[];
   reviewRunId: string;
+  runtime: Runtime;
+  localCwd?: string;
 }
 
 export async function runAutofix({
@@ -20,6 +22,8 @@ export async function runAutofix({
   ctx,
   findings,
   reviewRunId,
+  runtime,
+  localCwd,
 }: AutofixParams): Promise<AutofixOutcome> {
   if (findings.length === 0) {
     return { attempted: false };
@@ -28,24 +32,40 @@ export async function runAutofix({
   const branch = `cursor/autofix/pr-${ctx.prNumber}-${shortId(reviewRunId)}`;
 
   try {
-    await using agent = await Agent.create({
-      apiKey: cursorApiKey,
-      model: { id: MODEL_ID },
-      cloud: {
-        repos: [{ url: ctx.repoUrl, startingRef: ctx.headRef }],
-        workOnCurrentBranch: false,
-        skipReviewerRequest: true,
-        autoCreatePR: false,
+    const mcpServers = {
+      github: {
+        type: "stdio" as const,
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+        env: { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken },
       },
-      mcpServers: {
-        github: {
-          type: "stdio",
-          command: "npx",
-          args: ["-y", "@modelcontextprotocol/server-github"],
-          env: { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken },
-        },
-      },
-    });
+    };
+
+    // For local runtime, the runner's git performs `git push` using the
+    // GITHUB_TOKEN extraheader configured by actions/checkout. That token
+    // must have `contents: write` in the workflow.
+    const agentOptions =
+      runtime === "cloud"
+        ? {
+            apiKey: cursorApiKey,
+            model: { id: MODEL_ID },
+            cloud: {
+              repos: [{ url: ctx.repoUrl, startingRef: ctx.headRef }],
+              workOnCurrentBranch: false,
+              skipReviewerRequest: true,
+              autoCreatePR: false,
+            },
+            mcpServers,
+          }
+        : {
+            apiKey: cursorApiKey,
+            model: { id: MODEL_ID },
+            local: { cwd: localCwd ?? process.cwd(), settingSources: [] },
+            mcpServers,
+          };
+
+    await using agent = await Agent.create(agentOptions);
+    console.log(`[autofix] runtime=${runtime} agent=${agent.agentId}`);
 
     const prompt = buildAutofixPrompt(ctx, findings, branch);
 

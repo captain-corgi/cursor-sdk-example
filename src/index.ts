@@ -10,7 +10,7 @@ import {
 import { createLinearIssueForReview } from "./linear.js";
 import { ReviewParseError } from "./parse.js";
 import { runReview, ReviewRunError } from "./review.js";
-import type { AutofixOutcome, RepoContext } from "./types.js";
+import type { AutofixOutcome, RepoContext, Runtime } from "./types.js";
 
 const EX_OK = 0;
 const EX_STARTUP_FAILURE = 1;
@@ -24,16 +24,19 @@ interface Env {
   linearApiKey?: string;
   linearTeamId?: string;
   ctx: RepoContext;
+  runtime: Runtime;
 }
 
 async function main(): Promise<number> {
   const env = readEnv();
+  console.log(`[orchestrator] runtime=${env.runtime}`);
   const octokit = makeOctokit(env.githubToken);
 
   const review = await runReview({
     cursorApiKey: env.cursorApiKey,
     githubToken: env.githubToken,
     ctx: env.ctx,
+    runtime: env.runtime,
   });
 
   console.log(
@@ -51,6 +54,7 @@ async function main(): Promise<number> {
       ctx: env.ctx,
       findings: autofixable,
       reviewRunId: review.runId,
+      runtime: env.runtime,
     });
   }
 
@@ -131,11 +135,18 @@ function readEnv(): Env {
     throw new EnvError(`PR_NUMBER must be a positive integer, got "${prNumberRaw}"`);
   }
 
+  const runtimeRaw = process.env["CURSOR_RUNTIME"]?.toLowerCase() ?? "local";
+  if (runtimeRaw !== "cloud" && runtimeRaw !== "local") {
+    throw new EnvError(`CURSOR_RUNTIME must be "cloud" or "local", got "${runtimeRaw}"`);
+  }
+  const runtime = runtimeRaw as Runtime;
+
   return {
     cursorApiKey: process.env["CURSOR_API_KEY"]!,
     githubToken: process.env["GITHUB_TOKEN"]!,
     linearApiKey: process.env["LINEAR_API_KEY"] || undefined,
     linearTeamId: process.env["LINEAR_TEAM_ID"] || undefined,
+    runtime,
     ctx: {
       owner,
       repo,

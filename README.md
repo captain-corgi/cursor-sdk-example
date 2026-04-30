@@ -17,11 +17,11 @@ flowchart TD
     PR["PR opened / synchronized"] --> Action["GitHub Action<br/>(this repo)"]
     Action --> Orchestrator["Orchestrator<br/><code>src/index.ts</code>"]
 
-    Orchestrator --> Review["1. Cursor agent: <b>review</b><br/>(GitHub MCP)<br/>posts inline comments<br/>emits JSON tail block"]
-    Review -->|then| Autofix["2. Cursor agent: <b>autofix</b><br/>(GitHub MCP)<br/><i>only if autofixable findings</i><br/>push branch + open fix PR → HEAD_REF"]
-    Autofix -->|then| Linear["3. Linear GraphQL<br/><code>issueCreate</code><br/><i>only if blocking findings</i>"]
-    Linear -->|then| Summary["4. Post PR summary<br/>comment"]
-    Summary -->|then| Decide{"5. Safe to<br/>auto-approve?"}
+    Orchestrator --> Review["Step 1 — Cursor agent: <b>review</b><br/>(GitHub MCP)<br/>posts inline comments<br/>emits JSON tail block"]
+    Review -->|then| Autofix["Step 2 — Cursor agent: <b>autofix</b><br/>(GitHub MCP)<br/><i>only if autofixable findings</i><br/>push branch + open fix PR → HEAD_REF"]
+    Autofix -->|then| Linear["Step 3 — Linear GraphQL<br/><code>issueCreate</code><br/><i>only if blocking findings</i>"]
+    Linear -->|then| Summary["Step 4 — Post PR summary<br/>comment"]
+    Summary -->|then| Decide{"Step 5 — Safe to<br/>auto-approve?"}
 
     Decide -->|yes| Approve["GitHub API:<br/>auto-approve PR"]
     Decide -->|no| Reviewers["GitHub API:<br/>request CODEOWNERS review"]

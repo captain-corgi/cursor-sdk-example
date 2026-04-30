@@ -57,6 +57,18 @@ For a copy-paste workflow you can drop into another repo, see [`examples/cursor-
 | ---------------- | --------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
 | `LINEAR_TEAM_ID` | repo variable   | optional | UUID of the Linear team that should own filed issues. Required if you want Linear integration to function. |
 
+### Label gates
+
+The orchestrator is opt-in per PR via labels. Each label only enables its own step; nothing runs by default:
+
+| Label               | Effect when present                                              |
+| ------------------- | ---------------------------------------------------------------- |
+| `cursor-review`     | Run the review agent and post inline comments + summary comment. |
+| `cursor-autofix`    | Run the autofix agent and open the fix-PR (only if `cursor-review` is also set and there are autofixable findings). |
+| `cursor-autolinear` | File a Linear issue for blocking findings (only if `cursor-review` is also set, blocking findings exist, and `LINEAR_API_KEY` + `LINEAR_TEAM_ID` are configured). |
+
+If `cursor-review` is missing, the action exits 0 silently — no review, no autofix, no Linear issue, no auto-approve, and no CODEOWNERS request. Adding any of these labels re-triggers the action because the workflow listens for the `labeled` event.
+
 ## How it decides
 
 - **Auto-approve** runs only when **all** of:

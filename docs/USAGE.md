@@ -107,7 +107,9 @@ ambiguous error message (filed as Linear issue).
 
 Posted as a normal GitHub review (`event: COMMENT`). Each addresses a single concrete finding. The agent is instructed to skip praise-only and bikeshed comments.
 
-On every re-run (for example after a new commit), inline review threads from **prior runs by this bot** are auto-resolved so only the latest round stays expanded in the PR UI. Use **Show resolved** on the PR to see older rounds. Human-authored threads and the PR-level summary comment are not changed.
+On every re-run (for example after a new commit), inline review threads from **prior runs by this bot** are auto-resolved, and the PR-level summary comments from prior runs are minimized as outdated, so only the latest round stays expanded in the PR UI. Use **Show resolved** / the "Show outdated" disclosure to see older rounds. Human-authored threads and comments are not changed.
+
+Prior summary comments are identified by a hidden marker (`<!-- cursor-pr-review:summary -->`) embedded in the comment body, so only this action's own summary comments get minimized — any other comment the same bot identity may post is left alone.
 
 ### A fix PR (if autofixable findings exist)
 

@@ -12,27 +12,29 @@ GitHub Action that uses the [Cursor TypeScript SDK](https://cursor.com/docs/api/
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    PR["PR opened / synchronized"] --> Action["GitHub Action<br/>(this repo)"]
+    Action --> Orchestrator["Orchestrator<br/><code>src/index.ts</code>"]
+
+    Orchestrator --> Review["Step 1 — Cursor agent: <b>review</b><br/>(GitHub MCP)<br/>posts inline comments<br/>emits JSON tail block"]
+    Review -->|then| Autofix["Step 2 — Cursor agent: <b>autofix</b><br/>(GitHub MCP)<br/><i>only if autofixable findings</i><br/>push branch + open fix PR → HEAD_REF"]
+    Autofix -->|then| Linear["Step 3 — Linear GraphQL<br/><code>issueCreate</code><br/><i>only if blocking findings</i><br/><i>and LINEAR_API_KEY + LINEAR_TEAM_ID</i>"]
+    Linear -->|then| Summary["Step 4 — Post PR summary<br/>comment"]
+    Summary -->|then| Decide{"Step 5 — Safe to<br/>auto-approve?"}
+
+    Decide -->|yes| Approve["GitHub API:<br/>auto-approve PR"]
+    Decide -->|no| Reviewers["GitHub API:<br/>request CODEOWNERS review"]
+
+    classDef agent fill:#eef6ff,stroke:#3b82f6,color:#0b3d91;
+    classDef ext fill:#fff7ed,stroke:#f59e0b,color:#7c2d12;
+    classDef gh fill:#ecfdf5,stroke:#10b981,color:#065f46;
+    class Review,Autofix agent;
+    class Linear ext;
+    class Approve,Reviewers,Action,Summary gh;
 ```
-PR opened/synchronized
-        |
-        v
-GitHub Action (this repo)
-        |
-        v
-Orchestrator (src/index.ts)
-        |
-        +--> Cursor cloud agent: review (GitHub MCP)
-        |       posts inline review comments
-        |       emits structured JSON tail block
-        |
-        +--> Cursor cloud agent: autofix (GitHub MCP) [if autofixable findings]
-        |       branches off HEAD_REF
-        |       opens fix PR targeting HEAD_REF
-        |
-        +--> Linear GraphQL: issueCreate [if blocking findings]
-        |
-        +--> GitHub API: auto-approve OR request CODEOWNERS review
-```
+
+The chain reflects the sequential order in [`src/index.ts`](src/index.ts). Steps 2 and 3 are no-ops when their precondition (autofixable findings / blocking findings + Linear configured) doesn't hold; the pipeline still proceeds to the next step.
 
 Both agent calls support `local` (default) or `cloud` runtime via the `CURSOR_RUNTIME` env var — see [Choosing a runtime](docs/USAGE.md#choosing-a-runtime). Local runs on the Actions runner against the checked-out workspace; cloud runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Both use the GitHub MCP for posting comments and opening the fix PR.
 

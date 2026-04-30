@@ -5,10 +5,13 @@ import {
   autoApprove,
   commentOnPR,
   listOpenBotReviewThreadIds,
+  listPriorSummaryCommentIds,
   makeOctokit,
+  minimizeComments,
   openAutofixPr,
   requestCodeownersReview,
   resolveReviewThreads,
+  SUMMARY_COMMENT_MARKER,
 } from "./github.js";
 import { createLinearIssueForReview } from "./linear.js";
 import { ReviewParseError } from "./parse.js";
@@ -44,6 +47,21 @@ async function main(): Promise<number> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[orchestrator] list prior review threads failed: ${msg}`);
+  }
+
+  let priorSummaryCommentIds: string[] = [];
+  try {
+    priorSummaryCommentIds = await listPriorSummaryCommentIds(
+      octokit,
+      env.ctx,
+      SUMMARY_COMMENT_MARKER,
+    );
+    console.log(
+      `[orchestrator] prior bot summary comments: ${priorSummaryCommentIds.length}`,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[orchestrator] list prior summary comments failed: ${msg}`);
   }
 
   const review = await runReview({
@@ -137,6 +155,21 @@ async function main(): Promise<number> {
     autofix,
     linearUrl,
   });
+
+  if (priorSummaryCommentIds.length > 0) {
+    try {
+      const { minimized, failed } = await minimizeComments(
+        octokit,
+        priorSummaryCommentIds,
+      );
+      console.log(
+        `[orchestrator] minimized prior summary comments: ${minimized} (failed: ${failed})`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[orchestrator] minimize prior summary comments failed: ${msg}`);
+    }
+  }
 
   const safeToAutoApprove =
     review.result.complexity === "low" &&
@@ -264,6 +297,7 @@ async function postSummaryComment(
   },
 ): Promise<void> {
   const lines = [
+    SUMMARY_COMMENT_MARKER,
     "## Cursor automated review",
     "",
     `- **Complexity:** \`${data.review.complexity}\``,

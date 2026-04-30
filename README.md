@@ -67,7 +67,7 @@ The orchestrator is opt-in per PR via labels. Each label only enables its own st
 | `cursor-autofix`    | Run the autofix agent and open the fix-PR (only if `cursor-review` is also set and there are autofixable findings). |
 | `cursor-autolinear` | File a Linear issue for blocking findings (only if `cursor-review` is also set, blocking findings exist, and `LINEAR_API_KEY` + `LINEAR_TEAM_ID` are configured). |
 
-If `cursor-review` is missing, the action exits 0 silently — no review, no autofix, no Linear issue, no auto-approve, and no CODEOWNERS request. Adding any of these labels re-triggers the action because the workflow listens for the `labeled` event.
+If `cursor-review` is missing, the action exits 0 silently — no review, no autofix, no Linear issue, no auto-approve, and no CODEOWNERS request. The workflow listens for the pull_request `labeled` event, which GitHub emits whenever **any** label is added to the PR — not only `cursor-review` or the other gate labels above — so tagging unrelated labels also starts a new run.
 
 ## How it decides
 

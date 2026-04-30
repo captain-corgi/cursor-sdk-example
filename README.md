@@ -1,6 +1,6 @@
 # Cursor SDK PR Review Action
 
-> Looking for the operator's guide? See [`docs/USAGE.md`](docs/USAGE.md) for installation, configuration, troubleshooting, and FAQ.
+> Looking for the operator's guide? See [`USAGE.md`](USAGE.md) for installation, configuration, troubleshooting, and FAQ.
 
 GitHub Action that uses the [Cursor TypeScript SDK](https://cursor.com/docs/api/sdk/typescript) to:
 
@@ -36,7 +36,7 @@ flowchart TD
 
 The chain reflects the sequential order in [`src/index.ts`](src/index.ts). Steps 2 and 3 are no-ops when their precondition (autofixable findings / blocking findings + Linear configured) doesn't hold; the pipeline still proceeds to the next step.
 
-Both agent calls support `local` (default) or `cloud` runtime via the `CURSOR_RUNTIME` env var — see [Choosing a runtime](docs/USAGE.md#choosing-a-runtime). Local runs on the Actions runner against the checked-out workspace; cloud runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Both use the GitHub MCP for posting comments and opening the fix PR.
+Both agent calls support `local` (default) or `cloud` runtime via the `CURSOR_RUNTIME` env var — see [Choosing a runtime](USAGE.md#choosing-a-runtime). Local runs on the Actions runner against the checked-out workspace; cloud runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Both use the GitHub MCP for posting comments and opening the fix PR.
 
 ## Required configuration
 
@@ -93,7 +93,7 @@ Set the env vars from the workflow file and run `npm start` to invoke the orches
 
 ## Limitations
 
-- **PRs from public forks are not reviewed by default.** The bundled workflow uses `on: pull_request`, and GitHub does not pass repository secrets (including `CURSOR_API_KEY`) to runs triggered from a public fork — so the orchestrator step fails fast with a missing-secret error on fork PRs. The default install only reliably reviews PRs whose head branch lives in the same repo. Fork coverage requires switching to `pull_request_target` or a `workflow_run` split with a deliberate security design — see the [fork FAQ in `docs/USAGE.md`](docs/USAGE.md#faq).
+- **PRs from public forks are not reviewed by default.** The bundled workflow uses `on: pull_request`, and GitHub does not pass repository secrets (including `CURSOR_API_KEY`) to runs triggered from a public fork — so the orchestrator step fails fast with a missing-secret error on fork PRs. The default install only reliably reviews PRs whose head branch lives in the same repo. Fork coverage requires switching to `pull_request_target` or a `workflow_run` split with a deliberate security design — see the [fork FAQ in `USAGE.md`](USAGE.md#faq).
 - Cloud agent runtime requires the Cursor account to have repo access (GitHub App installation). Without it, the cloud run cannot clone the repo.
 - The CODEOWNERS parser implements a simplified subset of the matching rules (rooted paths, `*`, `**`, trailing `/` for directories, `?` for single character). Complex patterns may not match exactly the way GitHub does; treat the explicit `requestReviewers` call as a hint, not the source of truth — branch protection should still enforce real CODEOWNERS rules.
 - The autofix agent is intentionally conservative: it skips findings it cannot mechanically resolve. Skipped findings remain in the original PR.

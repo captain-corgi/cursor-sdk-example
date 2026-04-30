@@ -1,0 +1,74 @@
+# Cursor SDK PR Review — example workflow
+#
+# Copy this file to your repo at: .github/workflows/cursor-pr-review.yml
+#
+# Then:
+#   1. Copy src/, package.json, package-lock.json, and tsconfig.json from this
+#      project into your repo root (same layout as here).
+#   2. Add GitHub Actions secrets: CURSOR_API_KEY (required), LINEAR_API_KEY (optional).
+#   3. Add a repo variable LINEAR_TEAM_ID (optional) if you use LINEAR_API_KEY.
+#   4. Optional: change CURSOR_RUNTIME below from "local" to "cloud" if the
+#      Cursor GitHub App is installed on your repo — see docs/USAGE.md.
+#
+# Heads up — PRs from public forks:
+#   GitHub does NOT pass repository secrets (including CURSOR_API_KEY) to
+#   `pull_request` workflow runs triggered by a public fork, so fork PRs will
+#   fail at the orchestrator step with a missing-secret error and contributors
+#   from forks will not get a Cursor review. This workflow only reliably runs
+#   for PRs whose head branch lives in the same repo. See examples/README.md
+#   and docs/USAGE.md (FAQ) for fork-coverage options and their security
+#   trade-offs (this workflow checks out and runs PR head code, so naively
+#   switching to `pull_request_target` is unsafe).
+
+name: Cursor PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write # local runtime needs this to push the autofix branch
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: cursor-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Cursor review orchestrator
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_ID: ${{ vars.LINEAR_TEAM_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          REPO_URL: ${{ github.event.pull_request.head.repo.clone_url }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          # Use "cloud" instead of "local" if you use the Cursor GitHub App — see docs/USAGE.md
+          CURSOR_RUNTIME: local
+        run: npm start

@@ -2,7 +2,7 @@
 
 How to install, configure, operate, and tune the Cursor SDK PR Review Action in your repository.
 
-For the high-level "what it is" and architecture, see the [README](../README.md). This document is the operator's guide.
+For the high-level "what it is" and architecture, see the [README](README.md). This document is the operator's guide.
 
 ## Table of contents
 
@@ -30,7 +30,7 @@ Before you install:
 
 Copy `.github/workflows/cursor-pr-review.yml` from this repo into the target repo at the same path, and copy the `src/`, `package.json`, `package-lock.json`, and `tsconfig.json` files alongside it.
 
-A ready-to-copy workflow with inline setup comments lives at [`examples/cursor-pr-review.yml`](../examples/cursor-pr-review.yml).
+A ready-to-copy workflow with inline setup comments lives at [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml).
 
 If you don't want the orchestrator code living in every repo, alternative deployment patterns are listed under [Operational guidance](#operational-guidance).
 
@@ -140,13 +140,13 @@ Comparison:
 - **Local:** runs in `$GITHUB_WORKSPACE`. `git push` for the autofix branch uses the runner's `GITHUB_TOKEN`, so the workflow needs `permissions: contents: write` (already set in the bundled workflow). No Cursor GitHub App requirement.
 - **Cloud:** runs in a Cursor-hosted VM. The agent clones the repo via the Cursor GitHub App and pushes from inside that VM, so `contents: write` on the runner token is not strictly required. Long runs don't consume runner minutes. Requires the Cursor GitHub App to be installed on the repo or org.
 
-To switch, edit the `CURSOR_RUNTIME` line under the run step's `env:` block in [`.github/workflows/cursor-pr-review.yml`](../.github/workflows/cursor-pr-review.yml). Acceptable values are `local` and `cloud`. Anything else fails fast with an env error.
+To switch, edit the `CURSOR_RUNTIME` line under the run step's `env:` block in [`.github/workflows/cursor-pr-review.yml`](.github/workflows/cursor-pr-review.yml). Acceptable values are `local` and `cloud`. Anything else fails fast with an env error.
 
 Forks remain unsupported in either runtime: the runner's `GITHUB_TOKEN` cannot push to a fork, and the Cursor App-issued credentials cannot either.
 
 ### Change the auto-approve criteria
 
-[`src/index.ts`](../src/index.ts), the `safeToAutoApprove` expression:
+[`src/index.ts`](src/index.ts), the `safeToAutoApprove` expression:
 
 ```typescript
 const safeToAutoApprove =
@@ -163,23 +163,23 @@ Examples of valid tweaks:
 
 ### Change the review prompt or rubric
 
-[`src/review.ts`](../src/review.ts) -> `buildReviewPrompt`. This is where you encode "what counts as autofixable", "what counts as low complexity", and which dimensions to flag (security, performance, readability, etc.). Keep the JSON sentinel block intact — the parser depends on it.
+[`src/review.ts`](src/review.ts) -> `buildReviewPrompt`. This is where you encode "what counts as autofixable", "what counts as low complexity", and which dimensions to flag (security, performance, readability, etc.). Keep the JSON sentinel block intact — the parser depends on it.
 
 ### Change the autofix policy
 
-[`src/autofix.ts`](../src/autofix.ts) -> `buildAutofixPrompt`. The default rule is "fix only mechanical issues; never refactor or change behavior". Tighten or loosen as needed.
+[`src/autofix.ts`](src/autofix.ts) -> `buildAutofixPrompt`. The default rule is "fix only mechanical issues; never refactor or change behavior". Tighten or loosen as needed.
 
 ### Change Linear issue formatting
 
-[`src/linear.ts`](../src/linear.ts) -> `buildDescription`. Change title format, add labels, set priority, etc.
+[`src/linear.ts`](src/linear.ts) -> `buildDescription`. Change title format, add labels, set priority, etc.
 
 ### Change CODEOWNERS resolution
 
-[`src/github.ts`](../src/github.ts) -> `requestCodeownersReview`. The default reads the file from the PR's base ref. Adjust paths or matching rules as needed.
+[`src/github.ts`](src/github.ts) -> `requestCodeownersReview`. The default reads the file from the PR's base ref. Adjust paths or matching rules as needed.
 
 ### Change triggers
 
-[`.github/workflows/cursor-pr-review.yml`](../.github/workflows/cursor-pr-review.yml). The default runs on `opened`, `synchronize`, `reopened`. Add `ready_for_review` if you want to skip drafts.
+[`.github/workflows/cursor-pr-review.yml`](.github/workflows/cursor-pr-review.yml). The default runs on `opened`, `synchronize`, `reopened`. Add `ready_for_review` if you want to skip drafts.
 
 ## Operational guidance
 
@@ -210,7 +210,7 @@ In `cloud` runtime, the Cursor cloud agent operates on its own clone of your rep
 
 ### Branch protection interplay
 
-This action **does not** bypass branch protection. If your protection rules require N approving reviews from CODEOWNERS, the action's auto-approve counts as one approval — by the bot identity attached to `GITHUB_TOKEN`. Whether that satisfies your rule depends on whether you allow approvals from the bot. If you don't want bot approvals to satisfy the requirement, switch the action to leave a `COMMENT` review instead of `APPROVE` — change the `event` parameter in [`src/github.ts`](../src/github.ts) `autoApprove`.
+This action **does not** bypass branch protection. If your protection rules require N approving reviews from CODEOWNERS, the action's auto-approve counts as one approval — by the bot identity attached to `GITHUB_TOKEN`. Whether that satisfies your rule depends on whether you allow approvals from the bot. If you don't want bot approvals to satisfy the requirement, switch the action to leave a `COMMENT` review instead of `APPROVE` — change the `event` parameter in [`src/github.ts`](src/github.ts) `autoApprove`.
 
 ### Disabling for specific PRs
 
@@ -280,7 +280,7 @@ That option opens PRs against the **default branch** of the repo. We need the fi
 No — by design. Auto-approval applies only to the PR the action was invoked on (the original PR). The fix PR triggers a separate workflow run and is treated as a normal PR; whether it gets auto-approved depends on its own complexity and findings.
 
 **Why one Linear issue per PR instead of one per finding?**
-Configurable choice; the implementation in [`src/linear.ts`](../src/linear.ts) aggregates all non-autofixable findings into a single issue. If you prefer one issue per finding, fork `createLinearIssueForReview` to loop and call `issueCreate` per item.
+Configurable choice; the implementation in [`src/linear.ts`](src/linear.ts) aggregates all non-autofixable findings into a single issue. If you prefer one issue per finding, fork `createLinearIssueForReview` to loop and call `issueCreate` per item.
 
 **Can I dry-run this locally?**
 Yes — set the env vars from the workflow file (`CURSOR_API_KEY`, `GITHUB_TOKEN`, `PR_NUMBER`, `PR_URL`, `PR_TITLE`, `REPO_FULL_NAME`, `REPO_URL`, `HEAD_REF`, `BASE_REF`, optional Linear vars) and run `npm start` against an existing PR. The agent will post real comments and (if not gated) really auto-approve, so prefer running this in a sandbox repo.

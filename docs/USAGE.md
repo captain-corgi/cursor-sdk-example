@@ -107,7 +107,7 @@ ambiguous error message (filed as Linear issue).
 
 Posted as a normal GitHub review (`event: COMMENT`). Each addresses a single concrete finding. The agent is instructed to skip praise-only and bikeshed comments.
 
-On every re-run (for example after a new commit), inline review threads from **prior runs by this bot** are auto-resolved so only the latest round stays expanded in the PR UI. Use **Show resolved** on the PR to see older rounds. Human-authored threads and the PR-level summary comment are not changed.
+On every re-run (for example after a new commit), unresolved inline review threads whose **opening** inline comment was authored by this bot are auto-resolved so only the latest round stays expanded in the PR UI. Use **Show resolved** on the PR to see older rounds. Threads opened by someone else are not resolved. Maintainer or author replies written *under* a bot-started thread do not exempt it—the opener still counts as this bot—so human discussion there can collapse when resolved. The PR-level summary comment is not changed.
 
 ### A fix PR (if autofixable findings exist)
 

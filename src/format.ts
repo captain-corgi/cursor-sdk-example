@@ -3,14 +3,13 @@ import { Agent, CursorAgentError } from "@cursor/sdk";
 import { FormatParseError, parseFormatJson } from "./parse.js";
 import type { FormatOutcome, RepoContext, Runtime } from "./types.js";
 
-const MODEL_ID = "composer-2" as const;
-
 interface FormatParams {
   cursorApiKey: string;
   ctx: RepoContext;
   /** Markdown-ish summary of `pulls.listFiles` patches (from orchestrator). */
   diffSummary: string;
   runtime: Runtime;
+  modelId: string;
   localCwd?: string;
 }
 
@@ -19,6 +18,7 @@ export async function runFormat({
   ctx,
   diffSummary,
   runtime,
+  modelId,
   localCwd,
 }: FormatParams): Promise<FormatOutcome> {
   // No MCP: the orchestrator passes the PR diff text so the agent can ground
@@ -28,7 +28,7 @@ export async function runFormat({
     runtime === "cloud"
       ? {
           apiKey: cursorApiKey,
-          model: { id: MODEL_ID },
+          model: { id: modelId },
           cloud: {
             repos: [{ url: ctx.repoUrl, startingRef: ctx.headRef }],
             workOnCurrentBranch: true,
@@ -38,7 +38,7 @@ export async function runFormat({
         }
       : {
           apiKey: cursorApiKey,
-          model: { id: MODEL_ID },
+          model: { id: modelId },
           local: { cwd: localCwd ?? process.cwd(), settingSources: [] },
         };
 

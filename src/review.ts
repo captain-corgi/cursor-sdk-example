@@ -3,13 +3,12 @@ import { Agent, CursorAgentError } from "@cursor/sdk";
 import { parseReviewJson } from "./parse.js";
 import type { RepoContext, ReviewResult, Runtime } from "./types.js";
 
-const MODEL_ID = "composer-2" as const;
-
 interface ReviewParams {
   cursorApiKey: string;
   githubToken: string;
   ctx: RepoContext;
   runtime: Runtime;
+  modelId: string;
   localCwd?: string;
 }
 
@@ -25,6 +24,7 @@ export async function runReview({
   githubToken,
   ctx,
   runtime,
+  modelId,
   localCwd,
 }: ReviewParams): Promise<ReviewRun> {
   const mcpServers = {
@@ -40,7 +40,7 @@ export async function runReview({
     runtime === "cloud"
       ? {
           apiKey: cursorApiKey,
-          model: { id: MODEL_ID },
+          model: { id: modelId },
           cloud: {
             repos: [{ url: ctx.repoUrl, startingRef: ctx.headRef }],
             workOnCurrentBranch: true,
@@ -51,7 +51,7 @@ export async function runReview({
         }
       : {
           apiKey: cursorApiKey,
-          model: { id: MODEL_ID },
+          model: { id: modelId },
           local: { cwd: localCwd ?? process.cwd(), settingSources: [] },
           mcpServers,
         };

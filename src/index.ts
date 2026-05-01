@@ -36,6 +36,7 @@ interface Env {
   linearTeamId?: string;
   ctx: RepoContext;
   runtime: Runtime;
+  modelId: string;
 }
 
 async function main(): Promise<number> {
@@ -49,8 +50,7 @@ async function main(): Promise<number> {
     env.ctx.prTitle = snapshot.title;
     env.ctx.prBody = snapshot.body;
     console.log(
-      `[orchestrator] pr labels: ${
-        env.ctx.labels.length ? env.ctx.labels.join(", ") : "(none)"
+      `[orchestrator] pr labels: ${env.ctx.labels.length ? env.ctx.labels.join(", ") : "(none)"
       }`,
     );
   } catch (err) {
@@ -92,6 +92,7 @@ async function main(): Promise<number> {
         ctx: env.ctx,
         diffSummary,
         runtime: env.runtime,
+        modelId: env.modelId,
       });
       if (fmt.error) {
         console.warn(`[orchestrator] format step error: ${fmt.error}`);
@@ -155,6 +156,7 @@ async function main(): Promise<number> {
     githubToken: env.githubToken,
     ctx: env.ctx,
     runtime: env.runtime,
+    modelId: env.modelId,
   });
 
   if (priorThreadIds.length > 0) {
@@ -188,6 +190,7 @@ async function main(): Promise<number> {
       findings: autofixable,
       reviewRunId: review.runId,
       runtime: env.runtime,
+      modelId: env.modelId,
     });
 
     // The agent's contract is to push the branch; the orchestrator opens the
@@ -332,6 +335,7 @@ function readEnv(): Env {
     linearApiKey: process.env["LINEAR_API_KEY"] || undefined,
     linearTeamId: process.env["LINEAR_TEAM_ID"] || undefined,
     runtime,
+    modelId: process.env["CURSOR_MODEL_ID"] || "auto",
     ctx: {
       owner,
       repo,
@@ -409,8 +413,7 @@ async function postSummaryComment(
     "## Cursor automated review",
     "",
     `- **Complexity:** \`${data.review.complexity}\``,
-    `- **Findings:** ${data.review.findings.length} (autofixable: ${
-      data.review.findings.filter((f) => f.autofixable).length
+    `- **Findings:** ${data.review.findings.length} (autofixable: ${data.review.findings.filter((f) => f.autofixable).length
     }, blocking: ${data.review.findings.filter((f) => !f.autofixable).length})`,
     `- **Labels:** ${labelsLine}`,
   ];

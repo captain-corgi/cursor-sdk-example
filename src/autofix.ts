@@ -2,7 +2,6 @@ import { Agent, CursorAgentError } from "@cursor/sdk";
 
 import type { AutofixOutcome, Finding, RepoContext, Runtime } from "./types.js";
 
-const MODEL_ID = "composer-2" as const;
 const FIX_STATUS_START = "<<<CURSOR_AUTOFIX_STATUS>>>";
 const FIX_STATUS_END = "<<<END_CURSOR_AUTOFIX_STATUS>>>";
 
@@ -15,6 +14,7 @@ interface AutofixParams {
   findings: Finding[];
   reviewRunId: string;
   runtime: Runtime;
+  modelId: string;
   localCwd?: string;
 }
 
@@ -25,6 +25,7 @@ export async function runAutofix({
   findings,
   reviewRunId,
   runtime,
+  modelId,
   localCwd,
 }: AutofixParams): Promise<AutofixOutcome> {
   if (findings.length === 0) {
@@ -50,7 +51,7 @@ export async function runAutofix({
       runtime === "cloud"
         ? {
             apiKey: cursorApiKey,
-            model: { id: MODEL_ID },
+            model: { id: modelId },
             cloud: {
               repos: [{ url: ctx.repoUrl, startingRef: ctx.headRef }],
               workOnCurrentBranch: false,
@@ -61,7 +62,7 @@ export async function runAutofix({
           }
         : {
             apiKey: cursorApiKey,
-            model: { id: MODEL_ID },
+            model: { id: modelId },
             local: { cwd: localCwd ?? process.cwd(), settingSources: [] },
             mcpServers,
           };

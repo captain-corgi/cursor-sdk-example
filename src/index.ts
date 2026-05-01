@@ -442,10 +442,30 @@ async function postSummaryComment(
   }
 }
 
+/**
+ * Cursor account/plan errors that the orchestrator can't do anything about
+ * (e.g. free-plan users hitting Pro-only endpoints during local model
+ * validation). Treat as a clean no-op so the GitHub Action doesn't fail for
+ * what is fundamentally a user account issue rather than a workflow bug.
+ */
+function isAccountPlanError(err: CursorAgentError): boolean {
+  const code = err.code ?? "";
+  if (code === "plan_required" || code === "unauthorized" || code === "forbidden") {
+    return true;
+  }
+  return /\[(plan_required|unauthorized|forbidden)\]/i.test(err.message);
+}
+
 main()
   .then((code) => process.exit(code))
   .catch((err: unknown) => {
     if (err instanceof CursorAgentError) {
+      if (isAccountPlanError(err)) {
+        console.warn(
+          `[orchestrator] skipping pipeline: Cursor account/plan error: ${err.message}`,
+        );
+        process.exit(EX_OK);
+      }
       console.error(
         `[orchestrator] startup failed: ${err.message} (retryable=${err.isRetryable})`,
       );

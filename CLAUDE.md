@@ -42,7 +42,7 @@ No linter or formatter is configured in this project.
 
 **Agent communication protocol:** Each agent emits structured JSON delimited by sentinel strings (e.g., `<<<CURSOR_REVIEW_JSON>>>...<<<END_CURSOR_REVIEW_JSON>>>`). The parse module extracts these from agent stdout.
 
-**Two runtimes:** `CURSOR_RUNTIME=local` (runs on Actions runner) or `cloud` (Cursor-hosted VM). Both use GitHub MCP for API calls.
+**Two runtimes:** `CURSOR_RUNTIME=local` (runs on Actions runner) or `cloud` (Cursor-hosted VM). Cursor agents use the GitHub MCP for posting comments and opening the autofix PR; orchestrator workflow code uses `@octokit/rest` in `src/github.ts` for other GitHub operations.
 
 **Exit codes:** 0=success, 1=permanent startup failure, 2=review run error, 3=review JSON parse failure, 75=transient/retryable error.
 

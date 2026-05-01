@@ -16,6 +16,14 @@ const CODEOWNERS_PATHS = [
  */
 export const SUMMARY_COMMENT_MARKER = "<!-- cursor-pr-review:summary -->";
 
+/**
+ * Hidden marker for the one-shot notice we post when the Cursor SDK rejects
+ * the orchestrator with a plan/account error (e.g. free-plan users hitting
+ * Pro-only endpoints). Used to dedupe the notice across re-runs.
+ */
+export const PLAN_REQUIRED_COMMENT_MARKER =
+  "<!-- cursor-pr-review:plan-required -->";
+
 const GITHUB_BOT_LOGIN_SUFFIX = /\[bot\]$/i;
 
 /**

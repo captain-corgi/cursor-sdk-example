@@ -34,21 +34,34 @@ inputs:
 runs:
   using: composite
   steps:
+    # github.action_path can be "." when uses: ./ — concatenating "..././package-lock.json"
+    # makes setup-node reject the cache path. Resolve a canonical path first.
+    - name: Resolve action root and npm lockfile paths
+      id: action_paths
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        ROOT="$(cd "$ACTION_PATH" && pwd)"
+        echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+        echo "npm_lock=$ROOT/package-lock.json" >> "$GITHUB_OUTPUT"
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: "24"
         cache: npm
-        cache-dependency-path: ${{ github.action_path }}/package-lock.json
+        cache-dependency-path: ${{ steps.action_paths.outputs.npm_lock }}
 
     - name: Install action runtime dependencies
       shell: bash
-      working-directory: ${{ github.action_path }}
+      working-directory: ${{ steps.action_paths.outputs.root }}
       run: npm ci --omit=dev --ignore-scripts
 
     - name: Run Cursor PR review orchestrator
       shell: bash
       env:
+        ACTION_ROOT: ${{ steps.action_paths.outputs.root }}
         CURSOR_API_KEY: ${{ inputs.cursor-api-key }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         LINEAR_API_KEY: ${{ inputs.linear-api-key }}
@@ -61,4 +74,4 @@ runs:
         REPO_URL: ${{ github.event.pull_request.head.repo.clone_url }}
         HEAD_REF: ${{ github.event.pull_request.head.ref }}
         BASE_REF: ${{ github.event.pull_request.base.ref }}
-      run: node "${{ github.action_path }}/dist/index.js"
+      run: node "$ACTION_ROOT/dist/index.js"

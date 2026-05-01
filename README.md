@@ -4,7 +4,7 @@
 
 GitHub Action that uses the [Cursor TypeScript SDK](https://cursor.com/docs/api/sdk/typescript) to:
 
-0. Rewrite the PR title as `[TICKET-ID] Short summary` when a ticket appears in the branch/title/body (omit brackets if none), and rebuild the body using the **actual PR diff** merged with the author's existing description (`Summary / Motivation / Changes / Test Plan / Risk`). Always runs unless the PR carries `cursor-disable-format`.
+0. Rewrite the PR title as `[TICKET-ID] Short summary` when a ticket appears in the branch/title/body (omit brackets if none), and rebuild the body using the **actual PR diff** merged with the author's existing description (`Summary / Motivation / Changes / Test Plan / Risk`). Always runs unless the PR carries `cursor-disable-format` or the head branch starts with `cursor/autofix/` (fix-PR branches from this action).
 1. Run a cloud Cursor agent that reviews the PR diff and posts inline review comments.
 2. Classify the change complexity (`low` / `medium` / `high`) and tag each finding as autofixable or not.
 3. If anything is autofixable, run a second cloud agent that opens a fix-PR back to the feature branch.
@@ -36,7 +36,7 @@ flowchart TD
     class Approve,Reviewers,Action,Summary gh;
 ```
 
-The chain reflects the sequential order in [`src/index.ts`](src/index.ts). Step 0 always runs (unless opted out via `cursor-disable-format`) and is non-blocking — its failure logs a warning and lets the rest of the pipeline proceed. Steps 2 and 3 are no-ops when their precondition (autofixable findings / blocking findings + Linear configured) doesn't hold; the pipeline still proceeds to the next step.
+The chain reflects the sequential order in [`src/index.ts`](src/index.ts). Step 0 always runs unless opted out via `cursor-disable-format` or the head branch starts with `cursor/autofix/`; it is non-blocking — its failure logs a warning and lets the rest of the pipeline proceed. Steps 2 and 3 are no-ops when their precondition (autofixable findings / blocking findings + Linear configured) doesn't hold; the pipeline still proceeds to the next step.
 
 Both agent calls support `local` (default) or `cloud` runtime via the `CURSOR_RUNTIME` env var — see [Choosing a runtime](USAGE.md#choosing-a-runtime). Local runs on the Actions runner against the checked-out workspace; cloud runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Both use the GitHub MCP for posting comments and opening the fix PR.
 

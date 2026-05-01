@@ -18,7 +18,7 @@ flowchart TD
     PR["PR opened / synchronized"] --> Action["GitHub Action<br/>(this repo)"]
     Action --> Orchestrator["Orchestrator<br/><code>src/index.ts</code>"]
 
-    Orchestrator --> Format["Step 0 — Cursor agent: <b>format</b><br/>rewrite PR title (Conventional Commits)<br/>+ body template, then <code>pulls.update</code><br/><i>skip if cursor-disable-format</i>"]
+    Orchestrator --> Format["Step 0 — Cursor agent: <b>format</b><br/>rewrite PR title (Conventional Commits)<br/>and body template, then <code>pulls.update</code><br/><i>skip if cursor-disable-format</i>"]
     Format -->|then| Review["Step 1 — Cursor agent: <b>review</b><br/>(GitHub MCP)<br/>posts inline comments<br/>emits JSON tail block"]
     Review -->|then| Autofix["Step 2 — Cursor agent: <b>autofix</b><br/>(GitHub MCP)<br/><i>only if autofixable findings</i><br/>push branch + open fix PR → HEAD_REF"]
     Autofix -->|then| Linear["Step 3 — Linear GraphQL<br/><code>issueCreate</code><br/><i>only if blocking findings</i><br/><i>and LINEAR_API_KEY + LINEAR_TEAM_ID</i>"]

@@ -1,0 +1,6 @@
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Replace @captain-corgi with your GitHub username, or use @org/team-slug for a team.
+# Order matters: last matching pattern wins.
+
+* @captain-corgi

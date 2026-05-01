@@ -12,6 +12,7 @@ import {
   makeOctokit,
   minimizeComments,
   openAutofixPr,
+  PLAN_REQUIRED_COMMENT_MARKER,
   requestCodeownersReview,
   resolveReviewThreads,
   SUMMARY_COMMENT_MARKER,
@@ -37,6 +38,66 @@ interface Env {
   ctx: RepoContext;
   runtime: Runtime;
   modelId: string;
+}
+
+/**
+ * Cursor account/plan errors that the orchestrator can't do anything about
+ * (e.g. free-plan users hitting Pro-only endpoints during local model
+ * validation). Treat as a clean no-op so the GitHub Action doesn't fail for
+ * what is fundamentally a user account issue rather than a workflow bug.
+ */
+function isAccountPlanError(err: unknown): err is CursorAgentError {
+  if (!(err instanceof CursorAgentError)) return false;
+  const code = err.code ?? "";
+  if (code === "plan_required" || code === "unauthorized" || code === "forbidden") {
+    return true;
+  }
+  return /\[(plan_required|unauthorized|forbidden)\]/i.test(err.message);
+}
+
+function buildPlanRequiredCommentBody(detail: string): string {
+  return [
+    PLAN_REQUIRED_COMMENT_MARKER,
+    "## Cursor automated review skipped",
+    "",
+    "The Cursor SDK rejected this run with a plan/account error, so the orchestrator could not start an agent. This is typically because the configured `CURSOR_API_KEY` belongs to an account without access to the model or runtime the action requested (for example, a free-plan account hitting Pro-only endpoints during local model validation).",
+    "",
+    `**SDK error:** \`${detail}\``,
+    "",
+    "Check the subscription tied to the `CURSOR_API_KEY` secret here: https://cursor.com/dashboard",
+    "",
+    "_The action exited cleanly to avoid failing the workflow. Re-run after upgrading or rotating the key._",
+  ].join("\n");
+}
+
+/**
+ * Post a one-shot PR comment explaining the plan/account error, deduped via
+ * a hidden marker so re-runs on the same PR don't spam.
+ */
+async function notifyPlanRequiredOnce(
+  octokit: ReturnType<typeof makeOctokit>,
+  ctx: RepoContext,
+  err: CursorAgentError,
+): Promise<void> {
+  try {
+    const existing = await listPriorSummaryCommentIds(
+      octokit,
+      ctx,
+      PLAN_REQUIRED_COMMENT_MARKER,
+    );
+    if (existing.length > 0) {
+      console.log(
+        `[orchestrator] plan-required notice already posted (${existing.length}); skipping new comment`,
+      );
+      return;
+    }
+    await commentOnPR(octokit, ctx, buildPlanRequiredCommentBody(err.message));
+    console.log("[orchestrator] posted plan-required notice on PR");
+  } catch (commentErr) {
+    const msg =
+      commentErr instanceof Error ? commentErr.message : String(commentErr);
+    console.warn(`[orchestrator] failed to post plan-required notice: ${msg}`);
+  }
 }
 
 async function main(): Promise<number> {
@@ -96,6 +157,17 @@ async function main(): Promise<number> {
       });
       if (fmt.error) {
         console.warn(`[orchestrator] format step error: ${fmt.error}`);
+        // Format swallows CursorAgentError into `error`. If it was a
+        // plan/account error, notify the PR now and bail out cleanly so the
+        // (also-doomed) review step doesn't run and produce a duplicate.
+        if (/\[(plan_required|unauthorized|forbidden)\]/i.test(fmt.error)) {
+          await notifyPlanRequiredOnce(
+            octokit,
+            env.ctx,
+            new CursorAgentError(fmt.error),
+          );
+          return EX_OK;
+        }
       } else if (fmt.changed && fmt.newTitle !== undefined && fmt.newBody !== undefined) {
         await updatePullRequestTitleAndBody(octokit, env.ctx, {
           title: fmt.newTitle,
@@ -151,13 +223,22 @@ async function main(): Promise<number> {
     console.warn(`[orchestrator] list prior summary comments failed: ${msg}`);
   }
 
-  const review = await runReview({
-    cursorApiKey: env.cursorApiKey,
-    githubToken: env.githubToken,
-    ctx: env.ctx,
-    runtime: env.runtime,
-    modelId: env.modelId,
-  });
+  let review: Awaited<ReturnType<typeof runReview>>;
+  try {
+    review = await runReview({
+      cursorApiKey: env.cursorApiKey,
+      githubToken: env.githubToken,
+      ctx: env.ctx,
+      runtime: env.runtime,
+      modelId: env.modelId,
+    });
+  } catch (err) {
+    if (isAccountPlanError(err)) {
+      await notifyPlanRequiredOnce(octokit, env.ctx, err);
+      return EX_OK;
+    }
+    throw err;
+  }
 
   if (priorThreadIds.length > 0) {
     try {
@@ -442,30 +523,19 @@ async function postSummaryComment(
   }
 }
 
-/**
- * Cursor account/plan errors that the orchestrator can't do anything about
- * (e.g. free-plan users hitting Pro-only endpoints during local model
- * validation). Treat as a clean no-op so the GitHub Action doesn't fail for
- * what is fundamentally a user account issue rather than a workflow bug.
- */
-function isAccountPlanError(err: CursorAgentError): boolean {
-  const code = err.code ?? "";
-  if (code === "plan_required" || code === "unauthorized" || code === "forbidden") {
-    return true;
-  }
-  return /\[(plan_required|unauthorized|forbidden)\]/i.test(err.message);
-}
-
 main()
   .then((code) => process.exit(code))
   .catch((err: unknown) => {
+    if (isAccountPlanError(err)) {
+      // Reachable only if a plan/account error escapes a pipeline step that
+      // doesn't have its own notify hook (defense-in-depth — main() already
+      // handles the format and review paths explicitly).
+      console.warn(
+        `[orchestrator] skipping pipeline: Cursor account/plan error: ${err.message}`,
+      );
+      process.exit(EX_OK);
+    }
     if (err instanceof CursorAgentError) {
-      if (isAccountPlanError(err)) {
-        console.warn(
-          `[orchestrator] skipping pipeline: Cursor account/plan error: ${err.message}`,
-        );
-        process.exit(EX_OK);
-      }
       console.error(
         `[orchestrator] startup failed: ${err.message} (retryable=${err.isRetryable})`,
       );

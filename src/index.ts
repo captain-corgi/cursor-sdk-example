@@ -76,7 +76,6 @@ async function main(): Promise<number> {
     try {
       const fmt = await runFormat({
         cursorApiKey: env.cursorApiKey,
-        githubToken: env.githubToken,
         ctx: env.ctx,
         runtime: env.runtime,
       });

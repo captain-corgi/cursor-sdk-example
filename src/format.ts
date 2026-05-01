@@ -7,7 +7,6 @@ const MODEL_ID = "composer-2" as const;
 
 interface FormatParams {
   cursorApiKey: string;
-  githubToken: string;
   ctx: RepoContext;
   runtime: Runtime;
   localCwd?: string;

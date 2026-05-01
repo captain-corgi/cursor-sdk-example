@@ -99,8 +99,8 @@ function validateFormatPayload(value: unknown): FormatPayload {
       `status must be "rewritten" | "unchanged", got ${JSON.stringify(statusRaw)}`,
     );
   }
-  const title = asString(value["title"], "title");
-  const body = asString(value["body"], "body");
+  const title = asFormatString(value["title"], "title");
+  const body = asFormatString(value["body"], "body");
   const notesRaw = value["notes"];
   let notes: string | undefined;
   if (notesRaw !== undefined && notesRaw !== null) {
@@ -174,6 +174,13 @@ function asSeverity(value: unknown, index: number): Severity {
   throw new ReviewParseError(
     `finding[${index}].severity must be "low" | "medium" | "high"`,
   );
+}
+
+function asFormatString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new FormatParseError(`${label} must be a non-empty string`);
+  }
+  return value;
 }
 
 function asString(value: unknown, label: string): string {

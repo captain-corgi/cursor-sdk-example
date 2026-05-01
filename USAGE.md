@@ -23,6 +23,7 @@ Before you install:
 2. **A Cursor API key.** Prefer a **team service-account key** (Team Settings -> Service accounts) over a personal user key — the action runs unattended and shouldn't depend on a single user's credentials.
 3. **Repo admin or maintainer access** in GitHub, so you can add secrets, set repo variables, and (optionally) configure branch protection.
 4. **Optional: Linear workspace.** Only needed if you want findings filed as Linear issues. You'll need a Linear API key and a team UUID.
+5. **Node.js (local development).** Use **22 or newer** (`package.json` `engines`). GitHub Actions workflows in this repo run **`setup-node` with Node 24** and set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` so composite actions align with GitHub’s [Node 20 deprecation on Actions runners](https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/).
 
 ## Quick start: install in 5 minutes
 

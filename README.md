@@ -4,6 +4,7 @@
 
 GitHub Action that uses the [Cursor TypeScript SDK](https://cursor.com/docs/api/sdk/typescript) to:
 
+0. Rewrite the PR title as `[TICKET-ID] Short summary` when a ticket appears in the branch/title/body (omit brackets if none), and rebuild the body using the **actual PR diff** merged with the author's existing description (`Summary / Motivation / Changes / Test Plan / Risk`). Always runs unless the PR carries `cursor-disable-format` or the head branch starts with `cursor/autofix/` (fix-PR branches from this action).
 1. Run a cloud Cursor agent that reviews the PR diff and posts inline review comments.
 2. Classify the change complexity (`low` / `medium` / `high`) and tag each finding as autofixable or not.
 3. If anything is autofixable, run a second cloud agent that opens a fix-PR back to the feature branch.
@@ -17,7 +18,8 @@ flowchart TD
     PR["PR opened / synchronized"] --> Action["GitHub Action<br/>(this repo)"]
     Action --> Orchestrator["Orchestrator<br/><code>src/index.ts</code>"]
 
-    Orchestrator --> Review["Step 1 — Cursor agent: <b>review</b><br/>(GitHub MCP)<br/>posts inline comments<br/>emits JSON tail block"]
+    Orchestrator --> Format["Step 0 — Cursor agent: <b>format</b><br/>rewrite PR title ([ticket] summary)<br/>and body from diff + author text, then <code>pulls.update</code><br/><i>skip if cursor-disable-format</i>"]
+    Format -->|then| Review["Step 1 — Cursor agent: <b>review</b><br/>(GitHub MCP)<br/>posts inline comments<br/>emits JSON tail block"]
     Review -->|then| Autofix["Step 2 — Cursor agent: <b>autofix</b><br/>(GitHub MCP)<br/><i>only if autofixable findings</i><br/>push branch + open fix PR → HEAD_REF"]
     Autofix -->|then| Linear["Step 3 — Linear GraphQL<br/><code>issueCreate</code><br/><i>only if blocking findings</i><br/><i>and LINEAR_API_KEY + LINEAR_TEAM_ID</i>"]
     Linear -->|then| Summary["Step 4 — Post PR summary<br/>comment"]
@@ -29,12 +31,12 @@ flowchart TD
     classDef agent fill:#eef6ff,stroke:#3b82f6,color:#0b3d91;
     classDef ext fill:#fff7ed,stroke:#f59e0b,color:#7c2d12;
     classDef gh fill:#ecfdf5,stroke:#10b981,color:#065f46;
-    class Review,Autofix agent;
+    class Format,Review,Autofix agent;
     class Linear ext;
     class Approve,Reviewers,Action,Summary gh;
 ```
 
-The chain reflects the sequential order in [`src/index.ts`](src/index.ts). Steps 2 and 3 are no-ops when their precondition (autofixable findings / blocking findings + Linear configured) doesn't hold; the pipeline still proceeds to the next step.
+The chain reflects the sequential order in [`src/index.ts`](src/index.ts). Step 0 always runs unless opted out via `cursor-disable-format` or the head branch starts with `cursor/autofix/`; it is non-blocking — its failure logs a warning and lets the rest of the pipeline proceed. Steps 2 and 3 are no-ops when their precondition (autofixable findings / blocking findings + Linear configured) doesn't hold; the pipeline still proceeds to the next step.
 
 Both agent calls support `local` (default) or `cloud` runtime via the `CURSOR_RUNTIME` env var — see [Choosing a runtime](USAGE.md#choosing-a-runtime). Local runs on the Actions runner against the checked-out workspace; cloud runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Both use the GitHub MCP for posting comments and opening the fix PR.
 
@@ -56,6 +58,21 @@ For a copy-paste workflow you can drop into another repo, see [`examples/cursor-
 | Name             | Where           | Required | Notes                                                                                                       |
 | ---------------- | --------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
 | `LINEAR_TEAM_ID` | repo variable   | optional | UUID of the Linear team that should own filed issues. Required if you want Linear integration to function. |
+
+### Label gates
+
+The orchestrator is opt-in per PR via labels for the review/autofix/linear steps; nothing in steps 1–5 runs by default. Step 0 (PR title/body formatting) is the exception — it always runs and is opted *out* of via its own label:
+
+| Label                    | Effect when present                                              |
+| ------------------------ | ---------------------------------------------------------------- |
+| `cursor-disable-format`  | **Opt-out.** Skip the auto-formatting of PR title and body in Step 0. |
+| `cursor-review`          | Run the review agent and post inline comments + summary comment. |
+| `cursor-autofix`         | Run the autofix agent and open the fix-PR (only if `cursor-review` is also set and there are autofixable findings). |
+| `cursor-autolinear`      | File a Linear issue for blocking findings (only if `cursor-review` is also set, blocking findings exist, and `LINEAR_API_KEY` + `LINEAR_TEAM_ID` are configured). |
+
+Step 0 is also automatically skipped on the action's own autofix branches (head ref starting with `cursor/autofix/`), whose titles and bodies are generated deterministically and shouldn't be rewritten.
+
+If `cursor-review` is missing, steps 1–5 are a no-op — no review, no autofix, no Linear issue, no auto-approve, and no CODEOWNERS request — but Step 0 still runs unless `cursor-disable-format` is set. The workflow listens for the pull_request `labeled` event, which GitHub emits whenever **any** label is added to the PR — not only `cursor-review` or the other gate labels above — so tagging unrelated labels also starts a new run.
 
 ## How it decides
 

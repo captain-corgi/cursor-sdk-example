@@ -1,9 +1,12 @@
 import { CursorAgentError } from "@cursor/sdk";
 
 import { runAutofix } from "./autofix.js";
+import { runFormat } from "./format.js";
 import {
   autoApprove,
   commentOnPR,
+  getPullRequestDiffTextForFormat,
+  getPullRequestSnapshot,
   listOpenBotReviewThreadIds,
   listPriorSummaryCommentIds,
   makeOctokit,
@@ -12,10 +15,12 @@ import {
   requestCodeownersReview,
   resolveReviewThreads,
   SUMMARY_COMMENT_MARKER,
+  updatePullRequestTitleAndBody,
 } from "./github.js";
 import { createLinearIssueForReview } from "./linear.js";
 import { ReviewParseError } from "./parse.js";
 import { runReview, ReviewRunError } from "./review.js";
+import { LABELS } from "./types.js";
 import type { AutofixOutcome, Finding, RepoContext, Runtime } from "./types.js";
 
 const EX_OK = 0;
@@ -37,6 +42,87 @@ async function main(): Promise<number> {
   const env = readEnv();
   console.log(`[orchestrator] runtime=${env.runtime}`);
   const octokit = makeOctokit(env.githubToken);
+
+  try {
+    const snapshot = await getPullRequestSnapshot(octokit, env.ctx);
+    env.ctx.labels = snapshot.labels;
+    env.ctx.prTitle = snapshot.title;
+    env.ctx.prBody = snapshot.body;
+    console.log(
+      `[orchestrator] pr labels: ${
+        env.ctx.labels.length ? env.ctx.labels.join(", ") : "(none)"
+      }`,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[orchestrator] pr snapshot failed: ${msg}`);
+  }
+
+  const hasLabel = (l: string): boolean => env.ctx.labels.includes(l);
+
+  // Step 0 — always-on PR title/body normalization, gated only by the opt-out
+  // label and a check for the action's own autofix branches (whose titles are
+  // generated deterministically by the orchestrator and shouldn't be rewritten).
+  const isAutofixBranch = env.ctx.headRef.startsWith("cursor/autofix/");
+  const formatDisabled = hasLabel(LABELS.DISABLE_FORMAT);
+  if (formatDisabled) {
+    console.log(
+      `[orchestrator] '${LABELS.DISABLE_FORMAT}' label present; skipping format step.`,
+    );
+  } else if (isAutofixBranch) {
+    console.log(
+      `[orchestrator] head '${env.ctx.headRef}' is an autofix branch; skipping format step.`,
+    );
+  } else {
+    try {
+      let diffSummary: string;
+      try {
+        diffSummary = await getPullRequestDiffTextForFormat(octokit, env.ctx);
+        console.log(
+          `[orchestrator] format diff context: ${diffSummary.length} chars`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[orchestrator] format diff fetch failed: ${msg}`);
+        diffSummary = `(Failed to load PR diff from GitHub: ${msg})`;
+      }
+
+      const fmt = await runFormat({
+        cursorApiKey: env.cursorApiKey,
+        ctx: env.ctx,
+        diffSummary,
+        runtime: env.runtime,
+      });
+      if (fmt.error) {
+        console.warn(`[orchestrator] format step error: ${fmt.error}`);
+      } else if (fmt.changed && fmt.newTitle !== undefined && fmt.newBody !== undefined) {
+        await updatePullRequestTitleAndBody(octokit, env.ctx, {
+          title: fmt.newTitle,
+          body: fmt.newBody,
+        });
+        env.ctx.prTitle = fmt.newTitle;
+        env.ctx.prBody = fmt.newBody;
+        console.log(
+          `[orchestrator] format applied: ${fmt.notes ?? "(no notes)"}`,
+        );
+      } else {
+        console.log(
+          `[orchestrator] format unchanged: ${fmt.notes ?? "(no notes)"}`,
+        );
+      }
+    } catch (err) {
+      // Format must never block the rest of the pipeline.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[orchestrator] format step failed (continuing): ${msg}`);
+    }
+  }
+
+  if (!hasLabel(LABELS.REVIEW)) {
+    console.log(
+      `[orchestrator] '${LABELS.REVIEW}' label missing; skipping (no-op).`,
+    );
+    return EX_OK;
+  }
 
   let priorThreadIds: string[] = [];
   try {
@@ -94,7 +180,7 @@ async function main(): Promise<number> {
   const blocking = review.result.findings.filter((f) => !f.autofixable);
 
   let autofix: AutofixOutcome = { attempted: false };
-  if (autofixable.length > 0) {
+  if (autofixable.length > 0 && hasLabel(LABELS.AUTOFIX)) {
     autofix = await runAutofix({
       cursorApiKey: env.cursorApiKey,
       githubToken: env.githubToken,
@@ -127,10 +213,19 @@ async function main(): Promise<number> {
         autofix.error = `pr creation failed: ${msg}`;
       }
     }
+  } else if (autofixable.length > 0) {
+    console.log(
+      `[orchestrator] '${LABELS.AUTOFIX}' label missing; skipping autofix (${autofixable.length} autofixable findings).`,
+    );
   }
 
   let linearUrl: string | undefined;
-  if (blocking.length > 0 && env.linearApiKey && env.linearTeamId) {
+  if (
+    blocking.length > 0 &&
+    hasLabel(LABELS.LINEAR) &&
+    env.linearApiKey &&
+    env.linearTeamId
+  ) {
     try {
       const issue = await createLinearIssueForReview({
         apiKey: env.linearApiKey,
@@ -146,6 +241,10 @@ async function main(): Promise<number> {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[orchestrator] linear issue creation failed: ${msg}`);
     }
+  } else if (blocking.length > 0 && !hasLabel(LABELS.LINEAR)) {
+    console.log(
+      `[orchestrator] '${LABELS.LINEAR}' label missing; skipping Linear issue creation.`,
+    );
   } else if (blocking.length > 0) {
     console.log("[orchestrator] linear creds not set; skipping issue creation");
   }
@@ -239,9 +338,14 @@ function readEnv(): Env {
       prNumber,
       prUrl: process.env["PR_URL"]!,
       prTitle: process.env["PR_TITLE"]!,
+      // Body is fetched from the GitHub API at startup (see
+      // getPullRequestSnapshot in main); seed empty here so RepoContext is
+      // fully populated before that call returns.
+      prBody: "",
       repoUrl: process.env["REPO_URL"]!,
       headRef: process.env["HEAD_REF"]!,
       baseRef: process.env["BASE_REF"]!,
+      labels: [],
     },
   };
 }
@@ -296,6 +400,10 @@ async function postSummaryComment(
     linearUrl?: string;
   },
 ): Promise<void> {
+  const labelsLine = ctx.labels.length
+    ? ctx.labels.map((l) => `\`${l}\``).join(", ")
+    : "(none)";
+
   const lines = [
     SUMMARY_COMMENT_MARKER,
     "## Cursor automated review",
@@ -304,6 +412,7 @@ async function postSummaryComment(
     `- **Findings:** ${data.review.findings.length} (autofixable: ${
       data.review.findings.filter((f) => f.autofixable).length
     }, blocking: ${data.review.findings.filter((f) => !f.autofixable).length})`,
+    `- **Labels:** ${labelsLine}`,
   ];
 
   if (data.autofix.attempted) {

@@ -23,8 +23,11 @@
 name: Cursor PR Review
 
 on:
+  # `labeled` is included so adding the `cursor-review` / `cursor-autofix` /
+  # `cursor-autolinear` gate labels re-triggers the action without needing a
+  # new push. See the "Label gates" section in README.md.
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: write # local runtime needs this to push the autofix branch
@@ -39,6 +42,8 @@ jobs:
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,7 +55,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies

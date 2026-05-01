@@ -1,18 +1,20 @@
 import { CursorAgentError } from "@cursor/sdk";
 
 import { runAutofix } from "./autofix.js";
+import { runFormat } from "./format.js";
 import {
   autoApprove,
   commentOnPR,
+  getPullRequestSnapshot,
   listOpenBotReviewThreadIds,
   listPriorSummaryCommentIds,
-  listPullRequestLabels,
   makeOctokit,
   minimizeComments,
   openAutofixPr,
   requestCodeownersReview,
   resolveReviewThreads,
   SUMMARY_COMMENT_MARKER,
+  updatePullRequestTitleAndBody,
 } from "./github.js";
 import { createLinearIssueForReview } from "./linear.js";
 import { ReviewParseError } from "./parse.js";
@@ -41,7 +43,10 @@ async function main(): Promise<number> {
   const octokit = makeOctokit(env.githubToken);
 
   try {
-    env.ctx.labels = await listPullRequestLabels(octokit, env.ctx);
+    const snapshot = await getPullRequestSnapshot(octokit, env.ctx);
+    env.ctx.labels = snapshot.labels;
+    env.ctx.prTitle = snapshot.title;
+    env.ctx.prBody = snapshot.body;
     console.log(
       `[orchestrator] pr labels: ${
         env.ctx.labels.length ? env.ctx.labels.join(", ") : "(none)"
@@ -49,10 +54,55 @@ async function main(): Promise<number> {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[orchestrator] list pr labels failed: ${msg}`);
+    console.warn(`[orchestrator] pr snapshot failed: ${msg}`);
   }
 
   const hasLabel = (l: string): boolean => env.ctx.labels.includes(l);
+
+  // Step 0 — always-on PR title/body normalization, gated only by the opt-out
+  // label and a check for the action's own autofix branches (whose titles are
+  // generated deterministically by the orchestrator and shouldn't be rewritten).
+  const isAutofixBranch = env.ctx.headRef.startsWith("cursor/autofix/");
+  const formatDisabled = hasLabel(LABELS.DISABLE_FORMAT);
+  if (formatDisabled) {
+    console.log(
+      `[orchestrator] '${LABELS.DISABLE_FORMAT}' label present; skipping format step.`,
+    );
+  } else if (isAutofixBranch) {
+    console.log(
+      `[orchestrator] head '${env.ctx.headRef}' is an autofix branch; skipping format step.`,
+    );
+  } else {
+    try {
+      const fmt = await runFormat({
+        cursorApiKey: env.cursorApiKey,
+        githubToken: env.githubToken,
+        ctx: env.ctx,
+        runtime: env.runtime,
+      });
+      if (fmt.error) {
+        console.warn(`[orchestrator] format step error: ${fmt.error}`);
+      } else if (fmt.changed && fmt.newTitle !== undefined && fmt.newBody !== undefined) {
+        await updatePullRequestTitleAndBody(octokit, env.ctx, {
+          title: fmt.newTitle,
+          body: fmt.newBody,
+        });
+        env.ctx.prTitle = fmt.newTitle;
+        env.ctx.prBody = fmt.newBody;
+        console.log(
+          `[orchestrator] format applied: ${fmt.notes ?? "(no notes)"}`,
+        );
+      } else {
+        console.log(
+          `[orchestrator] format unchanged: ${fmt.notes ?? "(no notes)"}`,
+        );
+      }
+    } catch (err) {
+      // Format must never block the rest of the pipeline.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[orchestrator] format step failed (continuing): ${msg}`);
+    }
+  }
 
   if (!hasLabel(LABELS.REVIEW)) {
     console.log(
@@ -275,6 +325,10 @@ function readEnv(): Env {
       prNumber,
       prUrl: process.env["PR_URL"]!,
       prTitle: process.env["PR_TITLE"]!,
+      // Body is fetched from the GitHub API at startup (see
+      // getPullRequestSnapshot in main); seed empty here so RepoContext is
+      // fully populated before that call returns.
+      prBody: "",
       repoUrl: process.env["REPO_URL"]!,
       headRef: process.env["HEAD_REF"]!,
       baseRef: process.env["BASE_REF"]!,

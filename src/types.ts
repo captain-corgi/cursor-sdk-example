@@ -11,6 +11,7 @@ export const LABELS = {
   REVIEW: "cursor-review",
   AUTOFIX: "cursor-autofix",
   LINEAR: "cursor-autolinear",
+  DISABLE_FORMAT: "cursor-disable-format",
 } as const;
 
 export interface Finding {
@@ -35,6 +36,7 @@ export interface RepoContext {
   prNumber: number;
   prUrl: string;
   prTitle: string;
+  prBody: string;
   repoUrl: string;
   headRef: string;
   baseRef: string;
@@ -45,5 +47,14 @@ export interface AutofixOutcome {
   attempted: boolean;
   fixPrUrl?: string;
   branch?: string;
+  error?: string;
+}
+
+export interface FormatOutcome {
+  attempted: boolean;
+  changed: boolean;
+  newTitle?: string;
+  newBody?: string;
+  notes?: string;
   error?: string;
 }

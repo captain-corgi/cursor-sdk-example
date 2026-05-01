@@ -20,23 +20,55 @@ export function makeOctokit(token: string): Octokit {
   return new Octokit({ auth: token });
 }
 
+export interface PullRequestSnapshot {
+  labels: string[];
+  title: string;
+  body: string;
+}
+
 /**
- * Returns the names of every label currently applied to the PR. We read this
- * once at startup so the orchestrator can decide which steps to run; we don't
- * watch for `unlabeled` events mid-run.
+ * Single `pulls.get` call returning the labels, title, and body. We read this
+ * once at startup so the orchestrator can decide which steps to run (labels)
+ * and feed the format agent (title/body); we don't watch for `unlabeled` /
+ * `edited` events mid-run.
  */
-export async function listPullRequestLabels(
+export async function getPullRequestSnapshot(
   octokit: Octokit,
   ctx: { owner: string; repo: string; prNumber: number },
-): Promise<string[]> {
+): Promise<PullRequestSnapshot> {
   const { data } = await octokit.pulls.get({
     owner: ctx.owner,
     repo: ctx.repo,
     pull_number: ctx.prNumber,
   });
-  return data.labels
+  const labels = data.labels
     .map((l) => (typeof l === "string" ? l : l.name))
     .filter((n): n is string => Boolean(n));
+  return {
+    labels,
+    title: data.title ?? "",
+    body: data.body ?? "",
+  };
+}
+
+/**
+ * Update the PR title and/or body. Thin wrapper around `pulls.update`. Note
+ * that `pulls.update` fires the `pull_request: edited` event on GitHub, which
+ * this workflow does NOT subscribe to — so this call cannot retrigger the
+ * action and create a loop.
+ */
+export async function updatePullRequestTitleAndBody(
+  octokit: Octokit,
+  ctx: { owner: string; repo: string; prNumber: number },
+  patch: { title?: string; body?: string },
+): Promise<void> {
+  await octokit.pulls.update({
+    owner: ctx.owner,
+    repo: ctx.repo,
+    pull_number: ctx.prNumber,
+    ...(patch.title !== undefined ? { title: patch.title } : {}),
+    ...(patch.body !== undefined ? { body: patch.body } : {}),
+  });
 }
 
 export async function autoApprove(

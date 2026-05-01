@@ -1,30 +1,19 @@
 # Example workflows
 
-Sample GitHub Actions workflows for **downstream repositories** that install the Cursor SDK PR review orchestrator using the [per-repo copy](../USAGE.md#deployment-shape-options) pattern.
+These samples live under **`examples/`** only so GitHub does not execute them **in this repository** ([workflows load from `.github/workflows/`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax-for-github-actions#about-yaml-syntax-for-workflows)).
 
-These files live under `examples/` so they are **not** picked up as workflows in this repository (GitHub only runs workflows from `.github/workflows/`).
+## Prefer the published Action
 
-## Files
+This project ships **`action.yml` at the repo root** ([composite action](https://docs.github.com/en/actions/sharing-automations/creating-actions/creating-a-composite-action)). In downstream repos:
 
-| File | Purpose |
-|------|---------|
-| [`cursor-pr-review.yml`](cursor-pr-review.yml) | Drop into `.github/workflows/cursor-pr-review.yml` in your repo after copying `src/`, `package.json`, `package-lock.json`, and `tsconfig.json` from this project. |
+1. Add a workflow file under `.github/workflows/` using the **`pull_request`** trigger (see [`cursor-pr-review.yml`](cursor-pr-review.yml)).
+2. Point **`uses:`** at **`YOUR_ORG/THIS_REPO@version`** (semver tag / branch / SHA), where `YOUR_ORG/THIS_REPO` is the fork or upstream that hosts this code.
+3. Configure GitHub Secrets / Variables (`CURSOR_API_KEY`, optional Linear, optional `CURSOR_RUNTIME` via the **`cursor-runtime`** input).
 
-## How to use
+The Action runs **`npm ci --omit=dev`** against its **own checkout** (`github.action_path`) and executes the prebuilt **`dist/*.js`** bundle; your workspace stays the **`actions/checkout`** of the consuming repo (`cwd` stays `$GITHUB_WORKSPACE` for **`local`** runtime).
 
-1. Copy [`cursor-pr-review.yml`](cursor-pr-review.yml) to **your** repo at `.github/workflows/cursor-pr-review.yml` (or another name under `.github/workflows/`).
-2. Copy `src/`, `package.json`, `package-lock.json`, and `tsconfig.json` from this project into your repo **root**, next to your own code.
-3. In GitHub: add secrets (`CURSOR_API_KEY`, and optionally `LINEAR_API_KEY`) and optionally the `LINEAR_TEAM_ID` variable — see [Usage guideline](../USAGE.md).
-4. Open a test PR and confirm the **Cursor PR Review** workflow runs under the **Actions** tab.
+## Fallback: vendor the TypeScript repo
 
-## Important: PRs from public forks
+Copy `src/`, `package.json`, `package-lock.json`, `tsconfig.json`, and the older “`npm ci` + `npm start`” workflow if you fork the orchestrator internally and must pin custom prompt logic instead of versioning the Action tags.
 
-This example uses `on: pull_request`. GitHub **does not pass repository secrets** (including `CURSOR_API_KEY` and `LINEAR_API_KEY`) to workflow runs triggered by `pull_request` from a **public fork** — see GitHub's docs on [using secrets in workflows triggered by forks](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions#using-secrets-in-a-workflow). As a result:
-
-- Fork contributors will **not** get a Cursor review on their PRs — the run will fail at the "Run Cursor review orchestrator" step with a missing-secret error.
-- The example only reliably works for PRs whose head branch lives in the **same repository** (a developer pushing a topic branch, Dependabot, etc.).
-- Private repos can opt into "Send write tokens to workflows from fork pull requests" / "Send secrets and write tokens to workflows from fork pull requests" under **Settings → Actions → General**, but for public repos those toggles are not available.
-
-If you need fork PR coverage you'd need a different trigger such as `pull_request_target` or a `workflow_run` split. **Both require a deliberate security design**: this workflow checks out the PR head and runs `npm ci` against it, which means arbitrary fork code would execute with your secrets attached to the job. Naive `pull_request_target` adoption is a credential-exfiltration risk. See the [fork FAQ in `USAGE.md`](../USAGE.md#faq) for the trade-offs before going down that path.
-
-For prerequisites, runtime choice (`local` vs `cloud`), tuning prompts, and troubleshooting, see **[`USAGE.md`](../USAGE.md)**.
+See **[`USAGE.md`](../USAGE.md)** for secrets, **`cursor-runtime`** vs cloud, label gates, and fork limitations.

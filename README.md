@@ -38,11 +38,11 @@ flowchart TD
 
 The chain reflects the sequential order in [`src/index.ts`](src/index.ts). Step 0 always runs unless opted out via `cursor-disable-format` or the head branch starts with `cursor/autofix/`; it is non-blocking — its failure logs a warning and lets the rest of the pipeline proceed. Steps 2 and 3 are no-ops when their precondition (autofixable findings / blocking findings + Linear configured) doesn't hold; the pipeline still proceeds to the next step.
 
-Both agent calls support `local` (default) or `cloud` runtime via the `CURSOR_RUNTIME` env var — see [Choosing a runtime](USAGE.md#choosing-a-runtime). Local runs on the Actions runner against the checked-out workspace; cloud runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Both use the GitHub MCP for posting comments and opening the fix PR.
+Both agent calls support **`local`** (default) or **`cloud`** runtime — set **`with.cursor-runtime`** when you call the published composite Action, or **`CURSOR_RUNTIME`** when you vendor and run **`npm start`** — see [Choosing a runtime](USAGE.md#choosing-a-runtime). Local runs on the Actions runner against the checked-out workspace; cloud runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Both use the GitHub MCP for posting comments and opening the fix PR.
 
 ## Required configuration
 
-For a copy-paste workflow you can drop into another repo, see [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml) and [`examples/README.md`](examples/README.md).
+This repository is a **composite GitHub Action** ([`action.yml`](action.yml)): downstream repos only add a workflow that **`uses:`** your published copy (plus **`actions/checkout`**). For a ready-made workflow, see [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml) and [`examples/README.md`](examples/README.md).
 
 ### Secrets
 
@@ -104,6 +104,13 @@ If `cursor-review` is missing, steps 1–5 are a no-op — no review, no autofix
 ```bash
 npm install
 npm run typecheck
+npm test
+```
+
+After changing TypeScript under **`src/`**, refresh the Action bundle so **`dist/`** matches (required before tagging a release others pin with **`uses:`**):
+
+```bash
+npm run build:action
 ```
 
 Set the env vars from the workflow file and run `npm start` to invoke the orchestrator against an existing PR.

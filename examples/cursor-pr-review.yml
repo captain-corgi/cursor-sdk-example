@@ -1,36 +1,31 @@
 # Cursor SDK PR Review — example workflow
 #
-# Copy this file to your repo at: .github/workflows/cursor-pr-review.yml
+# This repo publishes a composite GitHub Action (`action.yml` at the repo root).
+# Point `uses:` at this repository (semver tag or SHA) instead of copying `src/`.
 #
-# Then:
-#   1. Copy src/, package.json, package-lock.json, and tsconfig.json from this
-#      project into your repo root (same layout as here).
-#   2. Add GitHub Actions secrets: CURSOR_API_KEY (required), LINEAR_API_KEY (optional).
-#   3. Add a repo variable LINEAR_TEAM_ID (optional) if you use LINEAR_API_KEY.
-#   4. Optional: change CURSOR_RUNTIME below from "local" to "cloud" if the
-#      Cursor GitHub App is installed on your repo — see USAGE.md.
+#   - uses: YOUR_ORG/cursor-sdk-example@v0 # replace with release tag / branch / SHA
+#
+# Prerequisites:
+#   1. GitHub Secrets: CURSOR_API_KEY (required), LINEAR_API_KEY (optional).
+#   2. Optional repo variable LINEAR_TEAM_ID when using Linear.
+#   3. Optional: cursor-runtime input "cloud" if the Cursor GitHub App is
+#      installed — see USAGE.md.
 #
 # Heads up — PRs from public forks:
 #   GitHub does NOT pass repository secrets (including CURSOR_API_KEY) to
 #   `pull_request` workflow runs triggered by a public fork, so fork PRs will
-#   fail at the orchestrator step with a missing-secret error and contributors
-#   from forks will not get a Cursor review. This workflow only reliably runs
-#   for PRs whose head branch lives in the same repo. See examples/README.md
-#   and USAGE.md (FAQ) for fork-coverage options and their security
-#   trade-offs (this workflow checks out and runs PR head code, so naively
-#   switching to `pull_request_target` is unsafe).
-
+#   fail at the action step with a missing-secret error. This workflow only
+#   reliably runs for PRs whose head branch lives in the same repo. See
+#   examples/README.md and USAGE.md (FAQ) before switching to pull_request_target.
+#
 name: Cursor PR Review
 
 on:
-  # `labeled` is included so adding the `cursor-review` / `cursor-autofix` /
-  # `cursor-autolinear` gate labels re-triggers the action without needing a
-  # new push. See the "Label gates" section in README.md.
   pull_request:
     types: [opened, synchronize, reopened, labeled]
 
 permissions:
-  contents: write # local runtime needs this to push the autofix branch
+  contents: write
   pull-requests: write
   issues: write
 
@@ -52,28 +47,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Cursor PR Review
+        uses: YOUR_ORG/cursor-sdk-example@v0
+        # Pin a commit SHA instead of @v0 for reproducible installs, e.g.:
+        # uses: YOUR_ORG/cursor-sdk-example@abcd1234...
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Cursor review orchestrator
-        env:
-          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
-          LINEAR_TEAM_ID: ${{ vars.LINEAR_TEAM_ID }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          REPO_FULL_NAME: ${{ github.repository }}
-          REPO_URL: ${{ github.event.pull_request.head.repo.clone_url }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          # Use "cloud" instead of "local" if you use the Cursor GitHub App — see USAGE.md
-          CURSOR_RUNTIME: local
-        run: npm start
+          cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          linear-api-key: ${{ secrets.LINEAR_API_KEY }}
+          linear-team-id: ${{ vars.LINEAR_TEAM_ID }}
+          cursor-runtime: local

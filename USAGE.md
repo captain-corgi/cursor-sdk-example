@@ -27,13 +27,16 @@ Before you install:
 
 ## Quick start: install in 5 minutes
 
-### 1. Add the workflow to your repo
+### 1. Add the workflow (composite Action — recommended)
 
-Copy `.github/workflows/cursor-pr-review.yml` from this repo into the target repo at the same path, and copy the `src/`, `package.json`, `package-lock.json`, and `tsconfig.json` files alongside it.
+This repository exposes a **composite GitHub Action** (`action.yml` at the repo root). In **your** repository:
 
-A ready-to-copy workflow with inline setup comments lives at [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml).
+1. Create `.github/workflows/cursor-pr-review.yml` — start from [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml) and replace **`YOUR_ORG/cursor-sdk-example`** with the GitHub path and ref (semver tag / branch / SHA) you actually publish from (`uses: octo-org/my-fork@v1`).
+2. Ensure **`actions/checkout`** runs **before** the Action step so the **`local`** runtime sees the PR’s files in **`$GITHUB_WORKSPACE`**. Fork-friendly checkout is already in that example (**`repository: ${{ github.event.pull_request.head.repo.full_name }}`** with **`head.ref`**).
 
-If you don't want the orchestrator code living in every repo, alternative deployment patterns are listed under [Operational guidance](#operational-guidance).
+Consumers do **not** copy **`src/`** or **`package.json`** into every repo anymore; Actions downloads this repo via **`uses:`** and runs **`npm ci --omit=dev`** plus the committed **`dist/`** bundle shipped here.
+
+Vendor fallback (copy **`src/`** + **`npm ci`** + **`npm start`**) stays documented under [Operational guidance](#operational-guidance).
 
 > **Heads up — PRs from public forks won't get a review by default.** The bundled trigger is `on: pull_request`, and GitHub does not pass repository secrets to runs from public forks, so the orchestrator step fails fast with a missing-secret error on those PRs. This is a deliberate trade-off — see the [fork FAQ](#faq) for why and what alternatives (`pull_request_target`, `workflow_run`) require if you need fork coverage.
 
@@ -131,17 +134,22 @@ The action's policy lives in code, not config. To tune it, edit these files:
 
 ### Choosing a runtime
 
-Both agent calls (review and autofix) can run in either of two runtimes, selected by the `CURSOR_RUNTIME` env var in the workflow:
+Both agent calls (review and autofix) can run in either of two runtimes:
 
-- `local` (the default): the agent runs on the GitHub Actions runner itself, against the workspace already checked out by `actions/checkout`. Use this for fast/small/private repos that already trust the Actions runner — there's no extra Cursor App requirement, and you don't pay for a Cursor-hosted VM.
-- `cloud`: the agent runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Use this for long-running jobs, when you don't want runner minutes burned on agent compute, or when you already have the Cursor GitHub App installed and want the agent's filesystem isolated from the runner.
+- **`local`** (default): the agent runs on the GitHub Actions runner against the workspace **`actions/checkout` already populated** (`$GITHUB_WORKSPACE`). Use for fast/small/private repos — no Cursor GitHub App requirement, no Cursor-hosted VM minutes.
+- **`cloud`**: the agent runs in a Cursor-hosted VM that clones the repo via the Cursor GitHub App. Long runs don't consume runner minutes on your Actions job; requires the App on the repo or org.
 
 Comparison:
 
-- **Local:** runs in `$GITHUB_WORKSPACE`. `git push` for the autofix branch uses the runner's `GITHUB_TOKEN`, so the workflow needs `permissions: contents: write` (already set in the bundled workflow). No Cursor GitHub App requirement.
-- **Cloud:** runs in a Cursor-hosted VM. The agent clones the repo via the Cursor GitHub App and pushes from inside that VM, so `contents: write` on the runner token is not strictly required. Long runs don't consume runner minutes. Requires the Cursor GitHub App to be installed on the repo or org.
+- **Local:** `git push` for the autofix branch uses the runner's `GITHUB_TOKEN`, so the workflow needs `permissions: contents: write` (already set in the examples). No Cursor GitHub App requirement.
+- **Cloud:** commits and PRs happen from the VM using the token you pass to the agent; `contents: write` on the runner token is not strictly required.
 
-To switch, edit the `CURSOR_RUNTIME` line under the run step's `env:` block in [`.github/workflows/cursor-pr-review.yml`](.github/workflows/cursor-pr-review.yml). Acceptable values are `local` and `cloud`. Anything else fails fast with an env error.
+How to select it:
+
+- **Published composite Action:** set **`with.cursor-runtime:`** (`local` or `cloud`) on the **`uses:`** step — see [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml).
+- **Vendored orchestrator:** set **`env: CURSOR_RUNTIME:`** before **`npm start`**.
+
+Only `local` and `cloud` are accepted; anything else fails fast with an env error.
 
 Forks remain unsupported in either runtime: the runner's `GITHUB_TOKEN` cannot push to a fork, and the Cursor App-issued credentials cannot either.
 
@@ -180,19 +188,21 @@ Examples of valid tweaks:
 
 ### Change triggers
 
-[`.github/workflows/cursor-pr-review.yml`](.github/workflows/cursor-pr-review.yml). The default runs on `opened`, `synchronize`, `reopened`. Add `ready_for_review` if you want to skip drafts.
+Your workflow's `on:` block — start from [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml). The default runs on `opened`, `synchronize`, `reopened`, `labeled`. Add `ready_for_review` if you want to skip drafts.
 
 ## Operational guidance
 
 ### Deployment shape options
 
-You have three reasonable choices for where the orchestrator code lives:
+Three common patterns:
 
-1. **Per-repo copy (simplest).** Copy `src/`, the workflow, and the package files into each target repo. Pro: zero coordination. Con: drift across repos.
-2. **Shared composite action in your org.** Extract the workflow steps into a `your-org/cursor-pr-review-action` repo and reference it from each repo's workflow with `uses: your-org/cursor-pr-review-action@v1`. Pro: single source of truth. Con: requires versioning discipline.
-3. **Reusable workflow.** Move the job into a [reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows) and reference it with `uses: your-org/.github/.github/workflows/cursor-pr-review.yml@main`. Pro: simpler than a composite action. Con: less ergonomic in the consuming repo's UI.
+1. **Published composite Action (default for consumers).** This repo already ships **`action.yml`** plus a committed **`dist/`** compile; downstream workflows use **`uses: owner/repo@v1`**. Pro: single versioned rollout. Con: you must **`npm run build:action`** and commit **`dist/`** before tagging a release consumers pin to.
 
-For a single repo, option 1 is fine. For more than three repos, prefer option 2 or 3.
+2. **Per-repo fork / vendor.** Copy **`src/`**, **`package.json`**, lockfile, **`tsconfig`**, then run **`npm ci` + `npm start`** in the workflow instead of **`uses:`**. Pro: unrestricted fork of prompts/policy. Con: drift across repos.
+
+3. **[Reusable workflow](https://docs.github.com/en/actions/using-workflows/reusing-workflows).** Caller uses **`workflow_call`** and delegates the whole job. Pro: one YAML for callers. Con: less flexible packaging than pinning a semver Action tag.
+
+Prefer **option 1** across multiple repos unless you intentionally fork internals (option **2**) or standardize via org-wide reusable workflows (option **3**).
 
 ### Concurrency and cost
 

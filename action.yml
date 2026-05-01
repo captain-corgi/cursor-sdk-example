@@ -1,0 +1,64 @@
+name: Cursor SDK PR Review
+description: >-
+  Runs Cursor SDK agents on PRs — format title/body, review, autofix, optional Linear,
+  auto-approve or request CODEOWNERS.
+
+branding:
+  icon: git-pull-request
+  color: blue
+
+inputs:
+  cursor-api-key:
+    description: Cursor API key (team service account preferred).
+    required: true
+  github-token:
+    description: >-
+      GitHub token for API access and (in local runtime) git push for autofix branches.
+      Use the default unless you need a PAT.
+    required: false
+    default: ${{ github.token }}
+  linear-api-key:
+    description: Optional Linear API key — when omitted, Linear steps are skipped.
+    required: false
+    default: ""
+  linear-team-id:
+    description: Linear team UUID — recommended when LINEAR_API_KEY is set.
+    required: false
+    default: ""
+  cursor-runtime:
+    description: >-
+      Cursor agent runtime — local (runner workspace, default) or cloud (Cursor-hosted VM).
+    required: false
+    default: "local"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "24"
+        cache: npm
+        cache-dependency-path: ${{ github.action_path }}/package-lock.json
+
+    - name: Install action runtime dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --omit=dev --ignore-scripts
+
+    - name: Run Cursor PR review orchestrator
+      shell: bash
+      env:
+        CURSOR_API_KEY: ${{ inputs.cursor-api-key }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        LINEAR_API_KEY: ${{ inputs.linear-api-key }}
+        LINEAR_TEAM_ID: ${{ inputs.linear-team-id }}
+        CURSOR_RUNTIME: ${{ inputs.cursor-runtime }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        REPO_FULL_NAME: ${{ github.repository }}
+        REPO_URL: ${{ github.event.pull_request.head.repo.clone_url }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        BASE_REF: ${{ github.event.pull_request.base.ref }}
+      run: node "${{ github.action_path }}/dist/index.js"

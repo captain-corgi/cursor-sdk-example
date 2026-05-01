@@ -7,7 +7,9 @@
   "scripts": {
     "start": "npm test && tsx src/index.ts",
     "test": "node --import tsx/esm --test src/github-actor-login.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:action": "tsc -p tsconfig.action.json",
+    "verify:dist": "npm run build:action && git diff --exit-code -- dist/"
   },
   "engines": {
     "node": ">=22"

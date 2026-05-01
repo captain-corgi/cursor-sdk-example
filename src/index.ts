@@ -5,6 +5,7 @@ import { runFormat } from "./format.js";
 import {
   autoApprove,
   commentOnPR,
+  getPullRequestDiffTextForFormat,
   getPullRequestSnapshot,
   listOpenBotReviewThreadIds,
   listPriorSummaryCommentIds,
@@ -74,10 +75,22 @@ async function main(): Promise<number> {
     );
   } else {
     try {
+      let diffSummary: string;
+      try {
+        diffSummary = await getPullRequestDiffTextForFormat(octokit, env.ctx);
+        console.log(
+          `[orchestrator] format diff context: ${diffSummary.length} chars`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[orchestrator] format diff fetch failed: ${msg}`);
+        diffSummary = `(Failed to load PR diff from GitHub: ${msg})`;
+      }
+
       const fmt = await runFormat({
         cursorApiKey: env.cursorApiKey,
-        githubToken: env.githubToken,
         ctx: env.ctx,
+        diffSummary,
         runtime: env.runtime,
       });
       if (fmt.error) {

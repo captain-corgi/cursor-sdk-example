@@ -4,7 +4,7 @@
 
 GitHub Action that uses the [Cursor TypeScript SDK](https://cursor.com/docs/api/sdk/typescript) to:
 
-0. Rewrite the PR title to Conventional Commits and the body to a `Summary / Motivation / Changes / Test Plan / Risk` template, preserving the author's intent. Always runs unless the PR carries `cursor-disable-format`.
+0. Rewrite the PR title as `[TICKET-ID] Short summary` when a ticket appears in the branch/title/body (omit brackets if none), and rebuild the body using the **actual PR diff** merged with the author's existing description (`Summary / Motivation / Changes / Test Plan / Risk`). Always runs unless the PR carries `cursor-disable-format`.
 1. Run a cloud Cursor agent that reviews the PR diff and posts inline review comments.
 2. Classify the change complexity (`low` / `medium` / `high`) and tag each finding as autofixable or not.
 3. If anything is autofixable, run a second cloud agent that opens a fix-PR back to the feature branch.
@@ -18,7 +18,7 @@ flowchart TD
     PR["PR opened / synchronized"] --> Action["GitHub Action<br/>(this repo)"]
     Action --> Orchestrator["Orchestrator<br/><code>src/index.ts</code>"]
 
-    Orchestrator --> Format["Step 0 — Cursor agent: <b>format</b><br/>rewrite PR title (Conventional Commits)<br/>and body template, then <code>pulls.update</code><br/><i>skip if cursor-disable-format</i>"]
+    Orchestrator --> Format["Step 0 — Cursor agent: <b>format</b><br/>rewrite PR title ([ticket] summary)<br/>+ body from diff + author text, then <code>pulls.update</code><br/><i>skip if cursor-disable-format</i>"]
     Format -->|then| Review["Step 1 — Cursor agent: <b>review</b><br/>(GitHub MCP)<br/>posts inline comments<br/>emits JSON tail block"]
     Review -->|then| Autofix["Step 2 — Cursor agent: <b>autofix</b><br/>(GitHub MCP)<br/><i>only if autofixable findings</i><br/>push branch + open fix PR → HEAD_REF"]
     Autofix -->|then| Linear["Step 3 — Linear GraphQL<br/><code>issueCreate</code><br/><i>only if blocking findings</i><br/><i>and LINEAR_API_KEY + LINEAR_TEAM_ID</i>"]

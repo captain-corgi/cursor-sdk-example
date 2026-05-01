@@ -71,6 +71,74 @@ export async function updatePullRequestTitleAndBody(
   });
 }
 
+const DEFAULT_FORMAT_DIFF_MAX_TOTAL_CHARS = 120_000;
+const DEFAULT_FORMAT_DIFF_MAX_PATCH_PER_FILE = 25_000;
+
+/**
+ * Builds a markdown document of changed files and unified diffs for the format
+ * agent. Uses `pulls.listFiles` (same source as the review step). Patches may
+ * be missing for binary or very large files; per-file and total size caps
+ * avoid blowing the model context.
+ */
+export async function getPullRequestDiffTextForFormat(
+  octokit: Octokit,
+  ctx: { owner: string; repo: string; prNumber: number },
+  options?: {
+    maxTotalChars?: number;
+    maxPatchPerFile?: number;
+  },
+): Promise<string> {
+  const maxTotalChars =
+    options?.maxTotalChars ?? DEFAULT_FORMAT_DIFF_MAX_TOTAL_CHARS;
+  const maxPatchPerFile =
+    options?.maxPatchPerFile ?? DEFAULT_FORMAT_DIFF_MAX_PATCH_PER_FILE;
+
+  const files = await octokit.paginate(octokit.pulls.listFiles, {
+    owner: ctx.owner,
+    repo: ctx.repo,
+    pull_number: ctx.prNumber,
+    per_page: 100,
+  });
+
+  if (files.length === 0) {
+    return "(No changed files reported for this PR.)";
+  }
+
+  const preamble =
+    "PR diff from GitHub API (`pulls.listFiles`). Patch text may be omitted for binary or very large files.\n\n";
+  const parts: string[] = [preamble];
+  let total = preamble.length;
+  let included = 0;
+
+  for (const f of files) {
+    let patch = f.patch ?? "";
+    if (patch.length > maxPatchPerFile) {
+      patch =
+        patch.slice(0, maxPatchPerFile) + "\n... [patch truncated for size]\n";
+    }
+    if (!patch) {
+      patch =
+        "(No unified diff in API response — e.g. binary, generated, or very large file.)";
+    }
+    const header = `### ${f.filename}\nstatus: ${f.status ?? "unknown"}, +${f.additions ?? 0} -${f.deletions ?? 0}\n`;
+    const block = `${header}\`\`\`diff\n${patch}\n\`\`\`\n\n`;
+    if (total + block.length > maxTotalChars) {
+      const omitted = files.length - included;
+      if (omitted > 0) {
+        parts.push(
+          `\n... ${omitted} more file(s) omitted (diff size budget exhausted).\n`,
+        );
+      }
+      break;
+    }
+    parts.push(block);
+    total += block.length;
+    included++;
+  }
+
+  return parts.join("");
+}
+
 export async function autoApprove(
   octokit: Octokit,
   ctx: RepoContext,

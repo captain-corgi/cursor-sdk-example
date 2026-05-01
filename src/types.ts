@@ -5,7 +5,10 @@ export type Runtime = "cloud" | "local";
 /**
  * Opt-in PR labels that gate each orchestrator step. A PR must carry the
  * matching label for the corresponding step to run; missing `LABELS.REVIEW`
- * makes the whole pipeline a no-op.
+ * skips the review, autofix, Linear, summary, and approve/request-review path
+ * (steps 1–5). Step 0 title/body formatting is not gated by this label and
+ * still runs unless the orchestrator skips the format step (e.g.
+ * `LABELS.DISABLE_FORMAT`).
  */
 export const LABELS = {
   REVIEW: "cursor-review",

@@ -16,6 +16,25 @@ const CODEOWNERS_PATHS = [
  */
 export const SUMMARY_COMMENT_MARKER = "<!-- cursor-pr-review:summary -->";
 
+const GITHUB_BOT_LOGIN_SUFFIX = /\[bot\]$/i;
+
+/**
+ * GitHub GraphQL often returns `viewer.login` as `github-actions[bot]` while
+ * `IssueComment.author.login` on the same token is `github-actions` (Bot type).
+ * Compare identities by stripping an optional trailing `[bot]` (case-insensitive)
+ * and comparing the base login case-insensitively (GitHub usernames are
+ * case-insensitive).
+ */
+export function githubActorLoginsMatch(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  if (a == null || b == null || a === "" || b === "") return false;
+  const na = a.replace(GITHUB_BOT_LOGIN_SUFFIX, "").toLowerCase();
+  const nb = b.replace(GITHUB_BOT_LOGIN_SUFFIX, "").toLowerCase();
+  return na === nb;
+}
+
 export function makeOctokit(token: string): Octokit {
   return new Octokit({ auth: token });
 }
@@ -248,7 +267,7 @@ export async function listOpenBotReviewThreadIds(
     for (const node of nodes) {
       if (node.isResolved) continue;
       const firstAuthor = node.comments.nodes[0]?.author?.login;
-      if (firstAuthor === login) {
+      if (githubActorLoginsMatch(firstAuthor, login)) {
         threadIds.push(node.id);
       }
     }
@@ -382,7 +401,7 @@ export async function listPriorSummaryCommentIds(
 
     for (const c of pr.comments.nodes) {
       if (c.isMinimized) continue;
-      if (c.author?.login !== login) continue;
+      if (!githubActorLoginsMatch(c.author?.login, login)) continue;
       if (!c.body || !c.body.includes(marker)) continue;
       ids.push(c.id);
     }

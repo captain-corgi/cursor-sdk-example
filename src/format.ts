@@ -200,19 +200,22 @@ Standard:
 
 After you have decided, emit ONE JSON block at the very end of your final
 message, exactly in this format (no extra commentary after the closing
-sentinel):
+sentinel). The example below is **valid JSON** — copy its shape only; replace
+values with your real title/body/notes. Do not use union (\`|\`) syntax or prose
+(like "OR ...") inside JSON string values.
 
 <<<CURSOR_FORMAT_JSON>>>
 {
-  "status": "rewritten" | "unchanged",
-  "title": "[TICKET-001] Short summary OR Short summary without brackets",
-  "body": "## Summary\\n...\\n\\n## Motivation\\n...\\n\\n## Changes\\n- ...\\n\\n## Test Plan\\n_None._\\n\\n## Risk\\n_None._",
-  "notes": "1 short sentence describing what you changed (for orchestrator logs)"
+  "status": "rewritten",
+  "title": "[PROJ-42] Short summary",
+  "body": "## Summary\\nWhat changed and why.\\n\\n## Motivation\\nWhy this was needed.\\n\\n## Changes\\n- path/to/file.ts: concrete change\\n\\n## Test Plan\\n_None._\\n\\n## Risk\\n_None._",
+  "notes": "One short sentence for orchestrator logs."
 }
 <<<END_CURSOR_FORMAT_JSON>>>
 
 Rules for the JSON block:
-- It MUST be valid JSON. No comments, no trailing commas.
+- It MUST be valid JSON. No comments, no trailing commas, no \`|\` unions inside strings.
+- "status" MUST be exactly the JSON string \`"rewritten"\` or \`"unchanged"\` (pick one).
 - "title" MUST be a non-empty string following the title rules above.
 - "body" MUST be a non-empty string containing all five "## " sections in order.
 - "notes" is optional; keep it under 120 characters.

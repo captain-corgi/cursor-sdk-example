@@ -5,7 +5,8 @@
   "description": "GitHub Action that uses Cursor SDK cloud agents to review PRs, autofix safe findings, file Linear issues, and auto-approve low-complexity changes.",
   "type": "module",
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "npm test && tsx src/index.ts",
+    "test": "node --import tsx/esm --test src/github-actor-login.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "engines": {

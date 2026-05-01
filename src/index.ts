@@ -19,10 +19,16 @@ import {
   updatePullRequestTitleAndBody,
 } from "./github.js";
 import { createLinearIssueForReview } from "./linear.js";
+import {
+  buildApprovalBody,
+  buildAutofixPrBody,
+  buildSummaryCommentBody,
+  isSafeToAutoApprove,
+} from "./orchestrator-helpers.js";
 import { ReviewParseError } from "./parse.js";
 import { runReview, ReviewRunError } from "./review.js";
 import { LABELS } from "./types.js";
-import type { AutofixOutcome, Finding, RepoContext, Runtime } from "./types.js";
+import type { AutofixOutcome, RepoContext, Runtime } from "./types.js";
 
 const EX_OK = 0;
 const EX_STARTUP_FAILURE = 1;
@@ -354,12 +360,7 @@ async function main(): Promise<number> {
     }
   }
 
-  const safeToAutoApprove =
-    review.result.complexity === "low" &&
-    blocking.length === 0 &&
-    (autofix.attempted ? Boolean(autofix.fixPrUrl) : true);
-
-  if (safeToAutoApprove) {
+  if (isSafeToAutoApprove(review.result, autofix)) {
     await autoApprove(
       octokit,
       env.ctx,
@@ -442,40 +443,6 @@ class EnvError extends Error {
   }
 }
 
-function buildApprovalBody(summary: string, autofix: AutofixOutcome): string {
-  const lines = [
-    "Automated approval by Cursor review action.",
-    "",
-    `**Summary:** ${summary}`,
-  ];
-  if (autofix.attempted && autofix.fixPrUrl) {
-    lines.push("", `Autofix PR: ${autofix.fixPrUrl}`);
-  }
-  return lines.join("\n");
-}
-
-function buildAutofixPrBody(ctx: RepoContext, autofixable: Finding[]): string {
-  const lines = [
-    `Automated autofix for findings on ${ctx.prUrl}.`,
-    "",
-    `Targets the original PR's head branch (\`${ctx.headRef}\`). Merge this PR to land the fixes; close it (and delete the branch) if you want to ignore the autofix and address the findings manually.`,
-    "",
-    `## Findings addressed`,
-    "",
-  ];
-  for (const f of autofixable) {
-    const lineSuffix = f.line !== undefined ? `:${f.line}` : "";
-    lines.push(
-      `- **[${f.id}] ${f.title}** (severity: ${f.severity}) — \`${f.file}${lineSuffix}\``,
-    );
-  }
-  lines.push(
-    "",
-    `Note: the autofix agent may have skipped findings it could not safely apply. Check the commit messages for any \`skipped\` notes.`,
-  );
-  return lines.join("\n");
-}
-
 async function postSummaryComment(
   octokit: ReturnType<typeof makeOctokit>,
   ctx: RepoContext,
@@ -485,38 +452,8 @@ async function postSummaryComment(
     linearUrl?: string;
   },
 ): Promise<void> {
-  const labelsLine = ctx.labels.length
-    ? ctx.labels.map((l) => `\`${l}\``).join(", ")
-    : "(none)";
-
-  const lines = [
-    SUMMARY_COMMENT_MARKER,
-    "## Cursor automated review",
-    "",
-    `- **Complexity:** \`${data.review.complexity}\``,
-    `- **Findings:** ${data.review.findings.length} (autofixable: ${data.review.findings.filter((f) => f.autofixable).length
-    }, blocking: ${data.review.findings.filter((f) => !f.autofixable).length})`,
-    `- **Labels:** ${labelsLine}`,
-  ];
-
-  if (data.autofix.attempted) {
-    if (data.autofix.fixPrUrl) {
-      lines.push(`- **Autofix PR:** ${data.autofix.fixPrUrl}`);
-    } else if (data.autofix.error) {
-      lines.push(`- **Autofix:** failed (${data.autofix.error})`);
-    } else {
-      lines.push(`- **Autofix:** no PR opened`);
-    }
-  }
-
-  if (data.linearUrl) {
-    lines.push(`- **Linear issue:** ${data.linearUrl}`);
-  }
-
-  lines.push("", `**Summary:** ${data.review.summary}`);
-
   try {
-    await commentOnPR(octokit, ctx, lines.join("\n"));
+    await commentOnPR(octokit, ctx, buildSummaryCommentBody(ctx, data));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[orchestrator] summary comment failed: ${msg}`);

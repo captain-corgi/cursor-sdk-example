@@ -134,7 +134,7 @@ export async function runAutofix({
   }
 }
 
-function buildAutofixPrompt(
+export function buildAutofixPrompt(
   ctx: RepoContext,
   findings: Finding[],
   branch: string,
@@ -190,7 +190,7 @@ Findings to address:
 ${findingsBlock}`;
 }
 
-function extractFixStatus(raw: string): FixStatus | undefined {
+export function extractFixStatus(raw: string): FixStatus | undefined {
   const start = raw.lastIndexOf(FIX_STATUS_START);
   if (start === -1) return undefined;
   const after = start + FIX_STATUS_START.length;
@@ -202,6 +202,6 @@ function extractFixStatus(raw: string): FixStatus | undefined {
   return undefined;
 }
 
-function shortId(id: string): string {
+export function shortId(id: string): string {
   return id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "run";
 }

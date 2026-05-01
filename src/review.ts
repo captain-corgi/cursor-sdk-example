@@ -118,7 +118,7 @@ export class ReviewRunError extends Error {
   }
 }
 
-function buildReviewPrompt(ctx: RepoContext): string {
+export function buildReviewPrompt(ctx: RepoContext): string {
   return `You are reviewing pull request ${ctx.prUrl} in ${ctx.owner}/${ctx.repo}.
 Head branch: ${ctx.headRef}. Base branch: ${ctx.baseRef}. PR number: ${ctx.prNumber}.
 

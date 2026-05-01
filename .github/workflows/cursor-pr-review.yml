@@ -17,20 +17,19 @@ jobs:
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Composite actions (checkout, setup-node) default to Node 20 until the
-    # runner switches; opt into Node 24 per GitHub's deprecation timeline — see
-    # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
+      # actions/checkout@v5 and actions/setup-node@v5 are the first major
+      # versions to natively run on Node.js 24, removing the need for the
+      # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 shim. See
+      # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm

@@ -128,7 +128,7 @@ export async function runFormat({
   }
 }
 
-function buildFormatPrompt(ctx: RepoContext, diffSummary: string): string {
+export function buildFormatPrompt(ctx: RepoContext, diffSummary: string): string {
   const originalBody = ctx.prBody.trim().length > 0 ? ctx.prBody : "(empty)";
 
   return `You are normalizing the title and body of pull request ${ctx.prUrl}

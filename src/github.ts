@@ -653,7 +653,7 @@ interface CodeownersRule {
   owners: string[];
 }
 
-function parseCodeowners(text: string): CodeownersRule[] {
+export function parseCodeowners(text: string): CodeownersRule[] {
   const rules: CodeownersRule[] = [];
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -671,7 +671,7 @@ function parseCodeowners(text: string): CodeownersRule[] {
   return rules;
 }
 
-function matchOwners(rules: CodeownersRule[], file: string): string[] {
+export function matchOwners(rules: CodeownersRule[], file: string): string[] {
   for (let i = rules.length - 1; i >= 0; i--) {
     const rule = rules[i]!;
     if (rule.regex.test(file)) return rule.owners;
@@ -679,7 +679,7 @@ function matchOwners(rules: CodeownersRule[], file: string): string[] {
   return [];
 }
 
-function codeownersToRegex(pattern: string): RegExp {
+export function codeownersToRegex(pattern: string): RegExp {
   let p = pattern;
   const rooted = p.startsWith("/");
   if (rooted) p = p.slice(1);

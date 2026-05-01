@@ -11,12 +11,11 @@
 #   3. Optional: cursor-runtime input "cloud" if the Cursor GitHub App is
 #      installed — see USAGE.md.
 #
-# Heads up — PRs from public forks:
-#   GitHub does NOT pass repository secrets (including CURSOR_API_KEY) to
-#   `pull_request` workflow runs triggered by a public fork, so fork PRs will
-#   fail at the action step with a missing-secret error. This workflow only
-#   reliably runs for PRs whose head branch lives in the same repo. See
-#   examples/README.md and USAGE.md (FAQ) before switching to pull_request_target.
+# Heads up — forks and Dependabot:
+#   GitHub does NOT pass CURSOR_API_KEY for public-fork pull_request runs or for
+#   Dependabot-triggered runs. The bundled job is skipped (if: secret non-empty)
+#   so those PRs don't fail the check. Human same-repo PRs with the secret run
+#   Cursor review. Naive pull_request_target remains unsafe — see USAGE.md FAQ.
 #
 name: Cursor PR Review
 
@@ -35,6 +34,7 @@ concurrency:
 
 jobs:
   review:
+    if: ${{ secrets.CURSOR_API_KEY != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -53,7 +53,7 @@ jobs:
         # uses: YOUR_ORG/cursor-sdk-example@abcd1234...
         with:
           cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
           linear-api-key: ${{ secrets.LINEAR_API_KEY }}
           linear-team-id: ${{ vars.LINEAR_TEAM_ID }}
           cursor-runtime: local

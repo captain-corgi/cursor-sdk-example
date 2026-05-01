@@ -38,7 +38,7 @@ Consumers do **not** copy **`src/`** or **`package.json`** into every repo anymo
 
 Vendor fallback (copy **`src/`** + **`npm ci`** + **`npm start`**) stays documented under [Operational guidance](#operational-guidance).
 
-> **Heads up — PRs from public forks won't get a review by default.** The bundled trigger is `on: pull_request`, and GitHub does not pass repository secrets to runs from public forks, so the orchestrator step fails fast with a missing-secret error on those PRs. This is a deliberate trade-off — see the [fork FAQ](#faq) for why and what alternatives (`pull_request_target`, `workflow_run`) require if you need fork coverage.
+> **Heads up — PRs without `CURSOR_API_KEY` (forks, Dependabot, unset secret).** The bundled job is skipped when `secrets.CURSOR_API_KEY` is empty (`if: secrets != ''`), because GitHub withholds repo secrets for public-fork `pull_request` runs and for Dependabot-triggered runs. See the [fork FAQ](#faq). If you remove that guard, runs fail at the orchestrator with `missing required env: CURSOR_API_KEY`.
 
 ### 2. Add secrets
 
@@ -275,7 +275,11 @@ When a run fails, the **Actions log** shows the structured logs from the orchest
 Yes — but the Cursor GitHub App must be installed on the org/repo, and the API key must belong to a user who has access to that repo (or to a team service account with access).
 
 **Does this work on forks?**
-**No, not by default.** The bundled workflow uses `on: pull_request`, and GitHub does **not** pass repository secrets (including `CURSOR_API_KEY` and `LINEAR_API_KEY`) to `pull_request` runs triggered from a **public fork** — see [GitHub's docs on secrets and forks](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions#using-secrets-in-a-workflow). On a fork PR the run fails fast at the orchestrator step with `missing required env: CURSOR_API_KEY`, and the fork contributor never gets a Cursor review. The default install only reliably reviews PRs whose head branch lives in **the same repo** (a developer pushing a topic branch, Dependabot, etc.). Private repos can opt into "Send write tokens / secrets to workflows from fork pull requests" under **Settings → Actions → General**, but those toggles are not available for public repos.
+**No, not by default.** On `pull_request`, GitHub does **not** pass repository secrets (including `CURSOR_API_KEY`) for **public forks** ([secrets and forks](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions#using-secrets-in-a-workflow)), so **`secrets.CURSOR_API_KEY` is empty** and the bundled job is **skipped** with `if: ${{ secrets.CURSOR_API_KEY != '' }}` (**Skipped**, not exit 1 — unless that guard was removed).
+
+**Same-repo Dependabot PRs** also **do not receive secrets**, even though the branch lives on the base repo — see [Dependabot and Actions](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions). To run Cursor review, use a workflow where **`CURSOR_API_KEY` exists** for the triggering actor (typically a developer PR from a branch push on your repo).
+
+Private repos can opt into "Send write tokens / secrets to workflows from fork pull requests" under **Settings → Actions → General**, but those toggles are **not** available on public repos; they **do not** change Dependabot’s secret restrictions.
 
 For fork coverage you'd switch the trigger to one of:
 

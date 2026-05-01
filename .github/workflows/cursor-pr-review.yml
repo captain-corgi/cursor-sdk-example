@@ -15,6 +15,10 @@ concurrency:
 
 jobs:
   review:
+    # Secrets (including CURSOR_API_KEY) are not available from Dependabot PRs or
+    # from forks on public repos — skipping avoids a failing check with exit 1
+    # (missing-env) on those runs. Configure the secret before expecting this job on same-repo PRs.
+    if: ${{ secrets.CURSOR_API_KEY != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Composite actions (checkout, setup-node) default to Node 20 until the
@@ -34,7 +38,7 @@ jobs:
         uses: ./
         with:
           cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
           linear-api-key: ${{ secrets.LINEAR_API_KEY }}
           linear-team-id: ${{ vars.LINEAR_TEAM_ID }}
           cursor-runtime: local

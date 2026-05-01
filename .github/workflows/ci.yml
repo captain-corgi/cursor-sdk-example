@@ -1,9 +1,15 @@
-name: CI
+# PRs: lint/tests + optional Cursor PR review (same Actions run listing).
+# Pushes to main/master: lint/tests only (review job skipped — not pull_request).
+
+name: CI & PR review
 
 on:
   push:
     branches: [main, master]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   check:
@@ -27,3 +33,33 @@ jobs:
 
       - name: Compiled action bundle matches source (dist/)
         run: npm run verify:dist
+
+  cursor-review:
+    if: >-
+      ${{ github.event_name == 'pull_request'
+          && secrets.CURSOR_API_KEY != '' }}
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Cursor PR Review
+        uses: ./
+        with:
+          cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
+          github-token: ${{ github.token }}
+          linear-api-key: ${{ secrets.LINEAR_API_KEY }}
+          linear-team-id: ${{ vars.LINEAR_TEAM_ID }}
+          cursor-runtime: local

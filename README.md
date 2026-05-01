@@ -42,7 +42,7 @@ Both agent calls support **`local`** (default) or **`cloud`** runtime — set **
 
 ## Required configuration
 
-This repository is a **composite GitHub Action** ([`action.yml`](action.yml)): downstream repos only add a workflow that **`uses:`** your published copy (plus **`actions/checkout`**). For a ready-made workflow, see [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml) and [`examples/README.md`](examples/README.md).
+This repository is a **composite GitHub Action** ([`action.yml`](action.yml)): downstream repos add a workflow that **`uses:`** your published copy (plus **`actions/checkout`**). Dogfood workflows live in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (**`check`** + **`cursor-review`**). For consumers, copy [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml) and [`examples/README.md`](examples/README.md).
 
 ### Secrets
 

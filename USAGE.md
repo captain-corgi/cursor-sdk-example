@@ -31,7 +31,7 @@ Before you install:
 
 This repository exposes a **composite GitHub Action** (`action.yml` at the repo root). In **your** repository:
 
-1. Create `.github/workflows/cursor-pr-review.yml` — start from [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml) and replace **`YOUR_ORG/cursor-sdk-example`** with the GitHub path and ref (semver tag / branch / SHA) you actually publish from (`uses: octo-org/my-fork@v1`).
+1. Copy this repo’s **`CI & PR review` workflow**: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) merges **verification** (**`check`** job — typecheck, tests, **`dist/` freshness**) with **optional Cursor review** (**`cursor-review`** job after **`check`**). Adapt job names/`on:` as needed. For downstream repos that **`uses:`** a published Action, start from [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml) and replace **`YOUR_ORG/cursor-sdk-example`** with the GitHub path and ref (semver tag / branch / SHA).
 2. Ensure **`actions/checkout`** runs **before** the Action step so the **`local`** runtime sees the PR’s files in **`$GITHUB_WORKSPACE`**. Fork-friendly checkout is already in that example (**`repository: ${{ github.event.pull_request.head.repo.full_name }}`** with **`head.ref`**).
 
 Consumers do **not** copy **`src/`** or **`package.json`** into every repo anymore; Actions downloads this repo via **`uses:`** and runs **`npm ci --omit=dev`** plus the committed **`dist/`** bundle shipped here.
@@ -206,7 +206,7 @@ Prefer **option 1** across multiple repos unless you intentionally fork internal
 
 ### Concurrency and cost
 
-- The workflow uses `concurrency: cursor-pr-review-${{ pr.number }}` with `cancel-in-progress: true`, so a quick stack of pushes won't spawn parallel cloud runs on the same PR.
+- The example workflow [`examples/cursor-pr-review.yml`](examples/cursor-pr-review.yml) uses `concurrency: cursor-pr-review-${{ pr.number }}` with `cancel-in-progress: true` so pushes on the same PR don’t stack parallel agent runs. This repo’s dogfood **`CI & PR review`** workflow merges **`pull_request`** with **`push`-to-main** in [`ci.yml`](.github/workflows/ci.yml) and omitted per-job concurrency there to avoid invalid `pull_request.*` refs on **`push`** events; copy the concurrency block onto **`cursor-review`** if you split workflows or only trigger on pull requests.
 - Each PR triggers up to two cloud agent runs (review + autofix). Budget accordingly. To reduce cost, gate by labels (only run on PRs labeled `needs-review`) or by `paths` (only run on `src/**`).
 
 ### Permissions

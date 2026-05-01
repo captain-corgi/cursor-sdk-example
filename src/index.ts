@@ -6,6 +6,7 @@ import {
   commentOnPR,
   listOpenBotReviewThreadIds,
   listPriorSummaryCommentIds,
+  listPullRequestLabels,
   makeOctokit,
   minimizeComments,
   openAutofixPr,
@@ -16,6 +17,7 @@ import {
 import { createLinearIssueForReview } from "./linear.js";
 import { ReviewParseError } from "./parse.js";
 import { runReview, ReviewRunError } from "./review.js";
+import { LABELS } from "./types.js";
 import type { AutofixOutcome, Finding, RepoContext, Runtime } from "./types.js";
 
 const EX_OK = 0;
@@ -37,6 +39,27 @@ async function main(): Promise<number> {
   const env = readEnv();
   console.log(`[orchestrator] runtime=${env.runtime}`);
   const octokit = makeOctokit(env.githubToken);
+
+  try {
+    env.ctx.labels = await listPullRequestLabels(octokit, env.ctx);
+    console.log(
+      `[orchestrator] pr labels: ${
+        env.ctx.labels.length ? env.ctx.labels.join(", ") : "(none)"
+      }`,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[orchestrator] list pr labels failed: ${msg}`);
+  }
+
+  const hasLabel = (l: string): boolean => env.ctx.labels.includes(l);
+
+  if (!hasLabel(LABELS.REVIEW)) {
+    console.log(
+      `[orchestrator] '${LABELS.REVIEW}' label missing; skipping (no-op).`,
+    );
+    return EX_OK;
+  }
 
   let priorThreadIds: string[] = [];
   try {
@@ -94,7 +117,7 @@ async function main(): Promise<number> {
   const blocking = review.result.findings.filter((f) => !f.autofixable);
 
   let autofix: AutofixOutcome = { attempted: false };
-  if (autofixable.length > 0) {
+  if (autofixable.length > 0 && hasLabel(LABELS.AUTOFIX)) {
     autofix = await runAutofix({
       cursorApiKey: env.cursorApiKey,
       githubToken: env.githubToken,
@@ -127,10 +150,19 @@ async function main(): Promise<number> {
         autofix.error = `pr creation failed: ${msg}`;
       }
     }
+  } else if (autofixable.length > 0) {
+    console.log(
+      `[orchestrator] '${LABELS.AUTOFIX}' label missing; skipping autofix (${autofixable.length} autofixable findings).`,
+    );
   }
 
   let linearUrl: string | undefined;
-  if (blocking.length > 0 && env.linearApiKey && env.linearTeamId) {
+  if (
+    blocking.length > 0 &&
+    hasLabel(LABELS.LINEAR) &&
+    env.linearApiKey &&
+    env.linearTeamId
+  ) {
     try {
       const issue = await createLinearIssueForReview({
         apiKey: env.linearApiKey,
@@ -146,6 +178,10 @@ async function main(): Promise<number> {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[orchestrator] linear issue creation failed: ${msg}`);
     }
+  } else if (blocking.length > 0 && !hasLabel(LABELS.LINEAR)) {
+    console.log(
+      `[orchestrator] '${LABELS.LINEAR}' label missing; skipping Linear issue creation.`,
+    );
   } else if (blocking.length > 0) {
     console.log("[orchestrator] linear creds not set; skipping issue creation");
   }
@@ -242,6 +278,7 @@ function readEnv(): Env {
       repoUrl: process.env["REPO_URL"]!,
       headRef: process.env["HEAD_REF"]!,
       baseRef: process.env["BASE_REF"]!,
+      labels: [],
     },
   };
 }
@@ -296,6 +333,10 @@ async function postSummaryComment(
     linearUrl?: string;
   },
 ): Promise<void> {
+  const labelsLine = ctx.labels.length
+    ? ctx.labels.map((l) => `\`${l}\``).join(", ")
+    : "(none)";
+
   const lines = [
     SUMMARY_COMMENT_MARKER,
     "## Cursor automated review",
@@ -304,6 +345,7 @@ async function postSummaryComment(
     `- **Findings:** ${data.review.findings.length} (autofixable: ${
       data.review.findings.filter((f) => f.autofixable).length
     }, blocking: ${data.review.findings.filter((f) => !f.autofixable).length})`,
+    `- **Labels:** ${labelsLine}`,
   ];
 
   if (data.autofix.attempted) {

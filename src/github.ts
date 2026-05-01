@@ -20,6 +20,25 @@ export function makeOctokit(token: string): Octokit {
   return new Octokit({ auth: token });
 }
 
+/**
+ * Returns the names of every label currently applied to the PR. We read this
+ * once at startup so the orchestrator can decide which steps to run; we don't
+ * watch for `unlabeled` events mid-run.
+ */
+export async function listPullRequestLabels(
+  octokit: Octokit,
+  ctx: { owner: string; repo: string; prNumber: number },
+): Promise<string[]> {
+  const { data } = await octokit.pulls.get({
+    owner: ctx.owner,
+    repo: ctx.repo,
+    pull_number: ctx.prNumber,
+  });
+  return data.labels
+    .map((l) => (typeof l === "string" ? l : l.name))
+    .filter((n): n is string => Boolean(n));
+}
+
 export async function autoApprove(
   octokit: Octokit,
   ctx: RepoContext,

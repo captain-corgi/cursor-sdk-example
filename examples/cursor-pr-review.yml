@@ -23,8 +23,11 @@
 name: Cursor PR Review
 
 on:
+  # `labeled` is included so adding the `cursor-review` / `cursor-autofix` /
+  # `cursor-autolinear` gate labels re-triggers the action without needing a
+  # new push. See the "Label gates" section in README.md.
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: write # local runtime needs this to push the autofix branch

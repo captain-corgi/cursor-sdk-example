@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "test": "node --import tsx/esm --test src/github-actor-login.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
